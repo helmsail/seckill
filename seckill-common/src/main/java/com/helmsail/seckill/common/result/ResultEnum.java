@@ -13,7 +13,8 @@ public enum ResultEnum implements IResultCode {
     PARAM_ERROR("param_error", "参数错误"),
     NOT_FOUND("not_found", "资源不存在"),
     LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败"),
-    DUBBO_CALL_ERROR("dubbo_call_error", "远程调用异常");
+    DUBBO_CALL_ERROR("dubbo_call_error", "远程调用异常"),
+    STOCK_INSUFFICIENT("stock_insufficient", "库存不足");
 
     private final String code;
     private final String message;

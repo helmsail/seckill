@@ -2,6 +2,7 @@ package com.helmsail.seckill.support.api.sku;
 
 import lombok.Data;
 
+import jakarta.validation.constraints.Min;
 import java.io.Serializable;
 
 /**
@@ -16,8 +17,9 @@ public class SkuPageQuery implements Serializable {
     private String spuNo;
 
     /** 当前页码 */
+    @Min(value = 1, message = "页码最小为1")
     private Integer pageNum = 1;
 
-    /** 每页条数 */
+    @Min(value = 1, message = "每页条数最小为1")
     private Integer pageSize = 10;
 }

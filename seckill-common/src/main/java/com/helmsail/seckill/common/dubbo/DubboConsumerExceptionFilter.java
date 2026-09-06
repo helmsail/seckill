@@ -25,6 +25,9 @@ public class DubboConsumerExceptionFilter implements Filter {
 
             // 已经是 BizException，直接抛出
             if (ex instanceof BizException) {
+                log.warn("[Dubbo Consumer] {}.{} 业务异常: {}",
+                        invoker.getInterface().getSimpleName(),
+                        invocation.getMethodName(), ex.getMessage());
                 throw (BizException) ex;
             }
 

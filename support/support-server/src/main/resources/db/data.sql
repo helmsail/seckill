@@ -237,3 +237,12 @@ INSERT INTO t_sku (spu_no, sku_no, sku_name, price, stock) VALUES
 ('SPU0098', 'SKU00118', '魅族 20 8+256G 先锋灰', 2599.00, 400),
 ('SPU0099', 'SKU00119', '魅族 20 Classic 12+256G 先锋灰', 2299.00, 400),
 ('SPU0100', 'SKU00120', '魅族 MYVU 8+256G 黑色', 2999.00, 300);
+
+-- 用户数据（明文密码，后续替换为加密）
+INSERT INTO t_user (username, password, role) VALUES
+('admin', 'admin123', 1),
+('operator01', '123456', 1),
+('operator02', '123456', 1),
+('zhangsan', '123456', 0),
+('lisi', '123456', 0),
+('wangwu', '123456', 0);

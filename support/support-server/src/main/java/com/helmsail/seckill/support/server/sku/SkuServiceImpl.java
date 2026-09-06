@@ -40,11 +40,13 @@ public class SkuServiceImpl implements SkuBizService {
     }
 
     @Override
-    @Transactional
     public void deductStock(String skuNo, int quantity) {
+        if (quantity <= 0) {
+            throw new BizException(ResultEnum.PARAM_ERROR);
+        }
         int rows = skuMapper.deductStock(skuNo, quantity);
         if (rows == 0) {
-            throw new BizException(ResultEnum.PARAM_ERROR);
+            throw new BizException(ResultEnum.STOCK_INSUFFICIENT);
         }
     }
 

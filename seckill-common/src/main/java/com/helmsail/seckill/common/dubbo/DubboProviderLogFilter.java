@@ -18,9 +18,8 @@ public class DubboProviderLogFilter implements Filter {
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
         String service = invoker.getInterface().getSimpleName();
         String method = invocation.getMethodName();
-        Object[] args = invocation.getArguments();
 
-        log.info("[Dubbo Provider] {}.{} 开始", service, method);
+        log.debug("[Dubbo Provider] {}.{} 开始", service, method);
 
         long start = System.currentTimeMillis();
         Result result = invoker.invoke(invocation);
@@ -29,7 +28,7 @@ public class DubboProviderLogFilter implements Filter {
         if (result.hasException()) {
             log.error("[Dubbo Provider] {}.{} 异常, 耗时: {}ms", service, method, elapsed, result.getException());
         } else {
-            log.info("[Dubbo Provider] {}.{} 成功, 耗时: {}ms", service, method, elapsed);
+            log.debug("[Dubbo Provider] {}.{} 成功, 耗时: {}ms", service, method, elapsed);
         }
 
         return result;
