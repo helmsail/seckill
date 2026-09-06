@@ -9,7 +9,8 @@ import lombok.Getter;
 public enum ResultEnum implements IResultCode {
 
     SUCCESS("success", "操作成功"),
-    SYSTEM_ERROR("system_error", "系统异常");
+    SYSTEM_ERROR("system_error", "系统异常"),
+    LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败");
 
     private final String code;
     private final String message;
