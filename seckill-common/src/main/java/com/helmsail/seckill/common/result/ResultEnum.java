@@ -8,7 +8,8 @@ import lombok.Getter;
 @Getter
 public enum ResultEnum implements IResultCode {
 
-    SUCCESS("success", "操作成功");
+    SUCCESS("success", "操作成功"),
+    SYSTEM_ERROR("system_error", "系统异常");
 
     private final String code;
     private final String message;

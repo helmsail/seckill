@@ -22,6 +22,20 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+        
+        <!-- WebMvc（可选，WebMvcExceptionHandler 使用） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <optional>true</optional>
+        </dependency>
+        
+        <!-- WebFlux（可选，WebFluxExceptionHandler 使用） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webflux</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 
 </project>
