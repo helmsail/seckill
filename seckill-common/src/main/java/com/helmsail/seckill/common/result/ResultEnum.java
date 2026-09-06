@@ -1,0 +1,20 @@
+package com.helmsail.seckill.common.result;
+
+import lombok.Getter;
+
+/**
+ * 响应码枚举
+ */
+@Getter
+public enum ResultEnum implements IResultCode {
+
+    SUCCESS("success", "操作成功");
+
+    private final String code;
+    private final String message;
+
+    ResultEnum(String code, String message) {
+        this.code = code;
+        this.message = message;
+    }
+}
