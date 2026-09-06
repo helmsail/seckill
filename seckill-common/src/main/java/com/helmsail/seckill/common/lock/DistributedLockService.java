@@ -29,6 +29,12 @@ public class DistributedLockService {
      * 执行加锁业务逻辑（无返回值）
      */
     public void execute(String key, long waitTime, long leaseTime, TimeUnit unit, Runnable task) throws InterruptedException {
+        if (key == null || unit == null || task == null) {
+            throw new BizException(ResultEnum.PARAM_ERROR);
+        }
+        if (waitTime <= 0 || leaseTime <= 0) {
+            throw new BizException(ResultEnum.PARAM_ERROR);
+        }
         RLock lock = redissonClient.getLock(key);
         if (!lock.tryLock(waitTime, leaseTime, unit)) {
             log.warn("获取分布式锁失败: key={}, waitTime={}{}", key, waitTime, unit);
@@ -49,6 +55,12 @@ public class DistributedLockService {
      * 执行加锁业务逻辑（有返回值）
      */
     public <T> T execute(String key, long waitTime, long leaseTime, TimeUnit unit, Callable<T> task) throws Exception {
+        if (key == null || unit == null || task == null) {
+            throw new BizException(ResultEnum.PARAM_ERROR);
+        }
+        if (waitTime <= 0 || leaseTime <= 0) {
+            throw new BizException(ResultEnum.PARAM_ERROR);
+        }
         RLock lock = redissonClient.getLock(key);
         if (!lock.tryLock(waitTime, leaseTime, unit)) {
             log.warn("获取分布式锁失败: key={}, waitTime={}{}", key, waitTime, unit);

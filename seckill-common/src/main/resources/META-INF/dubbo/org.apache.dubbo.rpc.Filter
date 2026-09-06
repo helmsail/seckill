@@ -1,0 +1,2 @@
+dubboProviderLog=com.helmsail.seckill.common.dubbo.DubboProviderLogFilter
+dubboConsumerException=com.helmsail.seckill.common.dubbo.DubboConsumerExceptionFilter

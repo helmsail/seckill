@@ -2,6 +2,7 @@ package com.helmsail.seckill.common.exception;
 
 import com.helmsail.seckill.common.result.IResultCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 /**
  * 业务异常
@@ -9,6 +10,7 @@ import lombok.Getter;
  * 秒杀系统中不填写堆栈，提升性能。
  */
 @Getter
+@NoArgsConstructor(force = true)
 public class BizException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;

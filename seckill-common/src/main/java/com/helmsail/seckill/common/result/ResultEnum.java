@@ -10,7 +10,9 @@ public enum ResultEnum implements IResultCode {
 
     SUCCESS("success", "操作成功"),
     SYSTEM_ERROR("system_error", "系统异常"),
-    LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败");
+    PARAM_ERROR("param_error", "参数错误"),
+    LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败"),
+    DUBBO_CALL_ERROR("dubbo_call_error", "远程调用异常");
 
     private final String code;
     private final String message;

@@ -37,7 +37,7 @@ public class Result<T> implements Serializable {
     }
 
     public static <T> Result<T> of(String code, String message, T data) {
-        return new Result<>(code, message, data, false);
+        return new Result<>(code, message, data, ResultEnum.SUCCESS.getCode().equals(code));
     }
 
     public static <T> Result<T> of(IResultCode resultCode) {

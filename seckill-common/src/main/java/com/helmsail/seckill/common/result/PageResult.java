@@ -35,6 +35,9 @@ public class PageResult<T> implements Serializable {
      * 从 MyBatis-Plus IPage 转换
      */
     public static <T> PageResult<T> of(IPage<T> page) {
+        if (page == null) {
+            return empty(10);
+        }
         return new PageResult<>(page.getRecords(), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
