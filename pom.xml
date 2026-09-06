@@ -47,12 +47,18 @@
                 <artifactId>dubbo</artifactId>
                 <version>3.3.4</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.dubbo</groupId>
+                <artifactId>dubbo-spring-boot-starter</artifactId>
+                <version>3.3.4</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
     <!-- 子模块 -->
     <modules>
         <module>seckill-common</module>
+        <module>support</module>
     </modules>
 
     <build>
