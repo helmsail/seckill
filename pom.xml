@@ -84,6 +84,7 @@
     <modules>
         <module>seckill-common</module>
         <module>support</module>
+        <module>seckill-base</module>
     </modules>
 
     <build>
