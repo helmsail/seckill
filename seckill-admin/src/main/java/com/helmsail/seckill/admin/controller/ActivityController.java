@@ -1,7 +1,10 @@
 package com.helmsail.seckill.admin.controller;
 
 import com.helmsail.seckill.base.activity.*;
+import com.helmsail.seckill.base.product.*;
+import com.helmsail.seckill.base.sku.*;
 import com.helmsail.seckill.common.result.Result;
+import com.helmsail.seckill.admin.vo.ActivityDetailVO;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +22,12 @@ public class ActivityController {
 
     @DubboReference
     private ActivityService activityService;
+
+    @DubboReference
+    private SeckillProductService seckillProductService;
+
+    @DubboReference
+    private SeckillSkuService seckillSkuService;
 
     /**
      * 创建活动
@@ -52,6 +61,30 @@ public class ActivityController {
     @GetMapping("/{activityNo}")
     public Result<ActivityDTO> getByActivityNo(@PathVariable String activityNo) {
         return Result.success(activityService.getByActivityNo(activityNo));
+    }
+
+    /**
+     * 查询活动详情（含商品和 SKU）
+     */
+    @GetMapping("/{activityNo}/detail")
+    public Result<ActivityDetailVO> detail(@PathVariable String activityNo) {
+        // 1. 查询活动
+        ActivityDTO activity = activityService.getByActivityNo(activityNo);
+
+        // 2. 查询活动下的所有商品
+        List<SeckillProductDTO> products = seckillProductService.listByActivityNo(activityNo);
+
+        // 3. 组装商品 + SKU
+        List<ActivityDetailVO.ProductWithSkus> productWithSkusList = new ArrayList<>();
+        for (SeckillProductDTO product : products) {
+            List<SeckillSkuDTO> skus = seckillSkuService.listBySkProductId(String.valueOf(product.getId()));
+            ActivityDetailVO.ProductInfo productInfo = new ActivityDetailVO.ProductInfo(
+                    product.getActivityNo(), product.getSpuNo(), product.getSpuName(),
+                    product.getDiscountType().name(), product.getDiscountParameter());
+            productWithSkusList.add(new ActivityDetailVO.ProductWithSkus(productInfo, skus));
+        }
+
+        return Result.success(new ActivityDetailVO(activity, productWithSkusList));
     }
 
     /**
