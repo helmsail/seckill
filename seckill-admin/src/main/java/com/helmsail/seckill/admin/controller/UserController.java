@@ -4,6 +4,7 @@ import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.user.LoginRequest;
 import com.helmsail.seckill.support.api.user.LoginResponse;
 import com.helmsail.seckill.support.api.user.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +24,7 @@ public class UserController {
      * 登录（用户/管理员统一入口）
      */
     @PostMapping("/login")
-    public Result<LoginResponse> login(@RequestBody LoginRequest request) {
+    public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return Result.success(userService.login(request));
     }
 }
