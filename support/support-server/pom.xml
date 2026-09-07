@@ -29,10 +29,6 @@
         </dependency>
         <dependency>
             <groupId>org.apache.dubbo</groupId>
-            <artifactId>dubbo</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.dubbo</groupId>
             <artifactId>dubbo-spring-boot-starter</artifactId>
         </dependency>
         <dependency>
@@ -49,13 +45,12 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
-        
         <!-- 支付宝 -->
         <dependency>
             <groupId>com.alipay.sdk</groupId>
             <artifactId>alipay-easysdk</artifactId>
         </dependency>
-        
+
         <!-- TTL -->
         <dependency>
             <groupId>com.alibaba</groupId>

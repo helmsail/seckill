@@ -91,6 +91,7 @@
         <module>support</module>
         <module>seckill-base</module>
         <module>seckill-admin</module>
+        <module>seckill-job</module>
     </modules>
 
     <build>

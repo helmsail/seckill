@@ -4,18 +4,23 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.helmsail</groupId>
-        <artifactId>seckill-base</artifactId>
+        <artifactId>seckill</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>seckill-base-server</artifactId>
-    <name>seckill-base-server</name>
-    <description>秒杀域服务端</description>
+    <artifactId>seckill-job</artifactId>
+    <name>seckill-job</name>
+    <description>秒杀系统任务调度模块（XXL-Job Admin + Executor）</description>
 
     <dependencies>
         <dependency>
             <groupId>com.helmsail</groupId>
             <artifactId>seckill-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.helmsail</groupId>
+            <artifactId>support-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -29,29 +34,26 @@
         </dependency>
         <dependency>
             <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
             <artifactId>dubbo-spring-boot-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <groupId>com.xuxueli</groupId>
+            <artifactId>xxl-job-core</artifactId>
+            <version>2.4.1</version>
         </dependency>
         <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <scope>runtime</scope>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- ShardingSphere -->
-        <dependency>
-            <groupId>org.apache.shardingsphere</groupId>
-            <artifactId>shardingsphere-jdbc-core</artifactId>
-        </dependency>
-
-        <!-- TTL -->
         <dependency>
             <groupId>com.alibaba</groupId>
             <artifactId>transmittable-thread-local</artifactId>
