@@ -72,17 +72,6 @@ public class ActivityServiceImpl implements ActivityBizService {
     }
 
     @Override
-    public void update(String activityNo, ActivityRequest request) {
-        Activity activity = activityMapper.selectOne(
-                new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
-        if (activity == null) {
-            throw new BizException(ResultEnum.NOT_FOUND);
-        }
-        updateFields(activity, request);
-        activityMapper.updateById(activity);
-    }
-
-    @Override
     public void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request) {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));

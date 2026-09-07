@@ -54,6 +54,7 @@ public class AdminBaggageFilter implements Filter {
             MDC.remove(USER_ID_KEY);
             MDC.remove(TRACE_ID_KEY);
             UserContext.clear();
+            RpcContext.getClientAttachment().clearAttachments();
         }
     }
 }

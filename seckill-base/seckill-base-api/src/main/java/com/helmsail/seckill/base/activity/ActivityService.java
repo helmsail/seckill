@@ -28,11 +28,6 @@ public interface ActivityService {
     List<ActivityDTO> listByStatus(ActivityStatus status);
 
     /**
-     * 修改活动信息
-     */
-    void update(String activityNo, ActivityRequest request);
-
-    /**
      * 修改活动信息（需满足指定状态才能修改）
      */
     void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request);

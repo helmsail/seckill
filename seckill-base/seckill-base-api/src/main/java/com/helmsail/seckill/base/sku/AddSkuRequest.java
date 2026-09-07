@@ -2,6 +2,8 @@ package com.helmsail.seckill.base.sku;
 
 import lombok.Data;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
@@ -13,10 +15,11 @@ public class AddSkuRequest implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 秒杀商品 ID */
+    @NotBlank(message = "秒杀商品ID不能为空")
     private String skProductId;
 
     /** SKU 编号（主域） */
+    @NotBlank(message = "SKU编号不能为空")
     private String skuNo;
 
     /** SKU 名称快照 */
@@ -25,7 +28,7 @@ public class AddSkuRequest implements Serializable {
     /** 原价 */
     private BigDecimal originalPrice;
 
-    /** 秒杀库存 */
+    @Min(value = 1, message = "秒杀库存必须大于0")
     private Integer activityStock;
 
     /** SKU 级别限购 */

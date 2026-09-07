@@ -6,7 +6,9 @@ import com.helmsail.seckill.support.api.sku.SkuDTO;
 import com.helmsail.seckill.support.api.sku.SkuPageQuery;
 import com.helmsail.seckill.support.api.sku.SkuPageResult;
 import com.helmsail.seckill.support.api.sku.SkuService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +17,7 @@ import java.util.List;
 /**
  * SKU 管理 Controller
  */
+@Slf4j
 @RestController
 @RequestMapping("/sku")
 @RequiredArgsConstructor
@@ -48,26 +51,40 @@ public class SkuController {
      * 内部自动：主域扣减库存 → 秒杀域添加 SKU
      */
     @PostMapping("/seckill")
-    public Result<Void> addSeckillSku(@RequestBody AddSkuRequest request) {
+    public Result<Void> addSeckillSku(@Valid @RequestBody AddSkuRequest request) {
         // 1. 从主域扣减库存
         skuService.deductStock(request.getSkuNo(), request.getActivityStock());
         // 2. 标记已扣减，添加到秒杀域
         request.setStockDeducted(true);
-        seckillSkuService.addSku(request);
+        try {
+            seckillSkuService.addSku(request);
+        } catch (Exception e) {
+            // 补偿：恢复主域库存
+            log.error("添加秒杀SKU失败，补偿恢复库存: skuNo={}", request.getSkuNo(), e);
+            skuService.addStock(request.getSkuNo(), request.getActivityStock());
+            throw e;
+        }
         return Result.success();
     }
 
-    /**
-     * 给秒杀商品删除 SKU
-     *
-     * 内部自动：秒杀域删除 SKU → 主域归还库存
-     */
     @DeleteMapping("/seckill")
-    public Result<Void> removeSeckillSku(@RequestBody RemoveSkuRequest request) {
+    public Result<Void> removeSeckillSku(@Valid @RequestBody RemoveSkuRequest request) {
         // 1. 从秒杀域删除 SKU
         RemoveSkuResponse response = seckillSkuService.removeSku(request);
         // 2. 将库存归还主域
-        skuService.addStock(response.getSkuNo(), response.getStockToRestore());
+        try {
+            skuService.addStock(response.getSkuNo(), response.getStockToRestore());
+        } catch (Exception e) {
+            // 补偿：恢复秒杀域 SKU
+            log.error("归还库存失败，补偿恢复秒杀SKU: skuNo={}", response.getSkuNo(), e);
+            AddSkuRequest addRequest = new AddSkuRequest();
+            addRequest.setSkProductId(request.getSkProductId());
+            addRequest.setSkuNo(response.getSkuNo());
+            addRequest.setActivityStock(response.getStockToRestore());
+            addRequest.setStockDeducted(true);
+            seckillSkuService.addSku(addRequest);
+            throw e;
+        }
         return Result.success();
     }
 

@@ -5,6 +5,7 @@ import com.helmsail.seckill.base.product.*;
 import com.helmsail.seckill.base.sku.*;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.admin.vo.ActivityDetailVO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
@@ -33,7 +34,7 @@ public class ActivityController {
      * 创建活动
      */
     @PostMapping
-    public Result<String> create(@RequestBody ActivityRequest request) {
+    public Result<String> create(@Valid @RequestBody ActivityRequest request) {
         return Result.success(activityService.create(request));
     }
 
@@ -50,7 +51,7 @@ public class ActivityController {
      * 修改活动（仅待开始状态）
      */
     @PutMapping("/{activityNo}")
-    public Result<Void> update(@PathVariable String activityNo, @RequestBody ActivityRequest request) {
+    public Result<Void> update(@PathVariable String activityNo, @Valid @RequestBody ActivityRequest request) {
         activityService.update(activityNo, ActivityStatus.PENDING, request);
         return Result.success();
     }

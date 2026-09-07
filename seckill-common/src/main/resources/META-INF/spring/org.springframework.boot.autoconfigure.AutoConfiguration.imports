@@ -1,3 +1,2 @@
-com.helmsail.seckill.common.exception.WebMvcExceptionHandler
-com.helmsail.seckill.common.exception.WebFluxExceptionHandler
+com.helmsail.seckill.common.exception.ExceptionAutoConfiguration
 com.helmsail.seckill.common.mybatis.MyBatisPlusAutoConfiguration
