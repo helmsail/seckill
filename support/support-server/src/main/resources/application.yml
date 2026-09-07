@@ -33,3 +33,11 @@ dubbo:
 jwt:
   secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!
   expiration: 86400000
+
+alipay:
+  app-id: your-app-id
+  merchant-private-key: your-merchant-private-key
+  merchant-cert-path: /path/to/appCertPublicKey.crt
+  alipay-cert-path: /path/to/alipayCertPublicKey_RSA2.crt
+  alipay-root-cert-path: /path/to/alipayRootCert.crt
+  notify-url: https://your-domain.com/pay/notify
