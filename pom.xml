@@ -103,6 +103,7 @@
         <module>seckill-admin</module>
         <module>seckill-job</module>
         <module>seckill-service</module>
+        <module>seckill-processor</module>
     </modules>
 
     <build>
