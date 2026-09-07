@@ -34,3 +34,20 @@ CREATE TABLE IF NOT EXISTS sk_product (
     KEY idx_spu_no (spu_no),
     KEY idx_is_deleted (is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='秒杀商品表';
+
+CREATE TABLE IF NOT EXISTS sk_sku (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sk_product_id VARCHAR(32) NOT NULL COMMENT '秒杀商品ID',
+    sku_no VARCHAR(32) NOT NULL COMMENT 'SKU编号（主域）',
+    sku_name VARCHAR(100) NOT NULL COMMENT 'SKU名称快照',
+    original_price DECIMAL(10,2) NOT NULL COMMENT '原价',
+    seckill_price DECIMAL(10,2) NOT NULL COMMENT '秒杀价（自动计算）',
+    activity_stock INT NOT NULL DEFAULT 0 COMMENT '秒杀库存',
+    purchase_limit INT NOT NULL DEFAULT 0 COMMENT 'SKU级别限购',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0=未删除，1=已删除',
+    KEY idx_sk_product_id (sk_product_id),
+    KEY idx_sku_no (sku_no),
+    KEY idx_is_deleted (is_deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='秒杀SKU表';
