@@ -51,6 +51,14 @@ public class SkuServiceImpl implements SkuBizService {
     }
 
     @Override
+    public void addStock(String skuNo, int quantity) {
+        if (quantity <= 0) {
+            throw new BizException(ResultEnum.PARAM_ERROR);
+        }
+        skuMapper.addStock(skuNo, quantity);
+    }
+
+    @Override
     public SkuPageResult page(SkuPageQuery query) {
         Page<Sku> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<Sku> wrapper = new LambdaQueryWrapper<>();

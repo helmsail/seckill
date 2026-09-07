@@ -17,5 +17,7 @@ public interface SkuBizService {
 
     void deductStock(String skuNo, int quantity);
 
+    void addStock(String skuNo, int quantity);
+
     SkuPageResult page(SkuPageQuery query);
 }

@@ -23,6 +23,11 @@ public interface SkuService {
     void deductStock(String skuNo, int quantity);
 
     /**
+     * 增加库存
+     */
+    void addStock(String skuNo, int quantity);
+
+    /**
      * 分页查询 SKU
      */
     SkuPageResult page(SkuPageQuery query);

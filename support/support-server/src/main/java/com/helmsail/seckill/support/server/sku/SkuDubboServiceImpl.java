@@ -34,6 +34,11 @@ public class SkuDubboServiceImpl implements SkuService {
     }
 
     @Override
+    public void addStock(String skuNo, int quantity) {
+        skuBizService.addStock(skuNo, quantity);
+    }
+
+    @Override
     public SkuPageResult page(SkuPageQuery query) {
         return skuBizService.page(query);
     }

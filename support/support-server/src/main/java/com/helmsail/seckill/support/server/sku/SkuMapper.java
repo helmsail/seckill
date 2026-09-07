@@ -13,4 +13,7 @@ public interface SkuMapper extends BaseMapper<Sku> {
 
     @Update("UPDATE t_sku SET stock = stock - #{quantity} WHERE sku_no = #{skuNo} AND stock >= #{quantity} AND is_deleted = 0")
     int deductStock(@Param("skuNo") String skuNo, @Param("quantity") int quantity);
+
+    @Update("UPDATE t_sku SET stock = stock + #{quantity} WHERE sku_no = #{skuNo} AND is_deleted = 0")
+    int addStock(@Param("skuNo") String skuNo, @Param("quantity") int quantity);
 }
