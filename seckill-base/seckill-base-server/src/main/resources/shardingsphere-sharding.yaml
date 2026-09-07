@@ -1,0 +1,24 @@
+dataSources:
+  ds_0:
+    url: jdbc:mysql://localhost:3306/seckill?useUnicode=true&characterEncoding=utf8&useSSL=false
+    username: root
+    password: root
+    driverClassName: com.mysql.cj.jdbc.Driver
+
+rules:
+  - !SHARDING
+    tables:
+      sk_order:
+        actualDataNodes: ds_0.sk_order_$->{0..3}
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: sk_order_inline
+    shardingAlgorithms:
+      sk_order_inline:
+        type: INLINE
+        props:
+          algorithm-expression: sk_order_$->{user_id % 4}
+
+props:
+  sql-show: true
