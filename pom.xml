@@ -90,6 +90,7 @@
         <module>seckill-common</module>
         <module>support</module>
         <module>seckill-base</module>
+        <module>seckill-admin</module>
     </modules>
 
     <build>
