@@ -18,4 +18,6 @@ public interface ActivityBizService {
     void update(String activityNo, ActivityRequest request);
 
     void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request);
+
+    void delete(String activityNo, ActivityStatus requiredStatus);
 }

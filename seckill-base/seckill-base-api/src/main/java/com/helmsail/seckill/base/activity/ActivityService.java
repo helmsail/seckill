@@ -36,4 +36,9 @@ public interface ActivityService {
      * 修改活动信息（需满足指定状态才能修改）
      */
     void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request);
+
+    /**
+     * 删除活动（需满足指定状态才能删除）
+     */
+    void delete(String activityNo, ActivityStatus requiredStatus);
 }

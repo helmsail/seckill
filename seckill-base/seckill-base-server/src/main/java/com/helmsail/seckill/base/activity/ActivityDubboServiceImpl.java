@@ -43,4 +43,9 @@ public class ActivityDubboServiceImpl implements ActivityService {
     public void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request) {
         activityBizService.update(activityNo, requiredStatus, request);
     }
+
+    @Override
+    public void delete(String activityNo, ActivityStatus requiredStatus) {
+        activityBizService.delete(activityNo, requiredStatus);
+    }
 }

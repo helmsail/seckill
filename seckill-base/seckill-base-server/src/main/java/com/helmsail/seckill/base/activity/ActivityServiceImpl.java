@@ -98,6 +98,21 @@ public class ActivityServiceImpl implements ActivityBizService {
         activityMapper.updateById(activity);
     }
 
+    @Override
+    public void delete(String activityNo, ActivityStatus requiredStatus) {
+        Activity activity = activityMapper.selectOne(
+                new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
+        if (activity == null) {
+            throw new BizException(ResultEnum.NOT_FOUND);
+        }
+        ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
+        if (currentStatus != requiredStatus) {
+            throw new BizException(ResultEnum.PARAM_ERROR.getCode(),
+                    "当前状态不满足删除条件，当前状态: " + currentStatus.getDesc());
+        }
+        activityMapper.deleteById(activity.getId());
+    }
+
     private void updateFields(Activity activity, ActivityRequest request) {
         if (request.getActivityName() != null) activity.setActivityName(request.getActivityName());
         if (request.getStartTime() != null) activity.setStartTime(request.getStartTime());
