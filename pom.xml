@@ -82,6 +82,16 @@
                 <artifactId>transmittable-thread-local</artifactId>
                 <version>2.14.5</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-spring-boot-starter</artifactId>
+                <version>2.3.1</version>
+            </dependency>
+            <dependency>
+                <groupId>com.xuxueli</groupId>
+                <artifactId>xxl-job-core</artifactId>
+                <version>2.4.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -92,6 +102,7 @@
         <module>seckill-base</module>
         <module>seckill-admin</module>
         <module>seckill-job</module>
+        <module>seckill-service</module>
     </modules>
 
     <build>
