@@ -51,11 +51,7 @@
             <artifactId>shardingsphere-jdbc-core</artifactId>
         </dependency>
 
-        <!-- TTL -->
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>transmittable-thread-local</artifactId>
-        </dependency>
+
     </dependencies>
 
     <build>

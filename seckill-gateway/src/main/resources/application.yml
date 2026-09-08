@@ -4,12 +4,49 @@ server:
 spring:
   application:
     name: seckill-gateway
+  config:
+    import:
+      - optional:nacos:seckill-gateway.yml
+
   cloud:
     gateway:
       routes:
+        # C 端服务
         - id: seckill-service
           uri: http://localhost:8084
           predicates:
-            - Path=/api/**
+            - Path=/api/c/**
           filters:
-            - StripPrefix=1
+            - StripPrefix=2
+
+        # 运营管理端
+        - id: seckill-admin
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/admin/**
+          filters:
+            - StripPrefix=2
+
+    sentinel:
+      eager: true
+      transport:
+        dashboard: localhost:8085
+      datasource:
+        # 网关限流规则，从 Nacos 动态读取
+        gw-flow:
+          nacos:
+            server-addr: 127.0.0.1:8848
+            namespace: public
+            data-id: ${spring.application.name}-sentinel-gw-flow.json
+            group-id: SENTINEL_GROUP
+            data-type: json
+            rule-type: gw-flow
+
+  nacos:
+    config:
+      server-addr: 127.0.0.1:8848
+      file-extension: yml
+
+# JWT（与 seckill-admin 共享同一个 secret）
+jwt:
+  secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!

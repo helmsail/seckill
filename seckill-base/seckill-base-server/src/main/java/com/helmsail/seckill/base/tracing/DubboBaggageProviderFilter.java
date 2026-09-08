@@ -8,8 +8,7 @@ import org.slf4j.MDC;
 /**
  * Dubbo Provider 链路追踪过滤器
  *
- * 从上游 Dubbo Attachment 中读取 traceId 和 userId，
- * 写入 MDC 和 UserContext，finally 中清理。
+ * 从上游 Dubbo Attachment 中读取 traceId 和 userId，写入 MDC 用于日志输出。
  */
 @Activate(group = CommonConstants.PROVIDER)
 public class DubboBaggageProviderFilter implements Filter {
@@ -27,7 +26,6 @@ public class DubboBaggageProviderFilter implements Filter {
         }
         if (userId != null) {
             MDC.put(USER_ID_KEY, userId);
-            UserContext.setUserId(userId);
         }
 
         try {
@@ -35,7 +33,6 @@ public class DubboBaggageProviderFilter implements Filter {
         } finally {
             MDC.remove(TRACE_ID_KEY);
             MDC.remove(USER_ID_KEY);
-            UserContext.clear();
         }
     }
 }
