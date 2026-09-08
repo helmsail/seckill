@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: seckill-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: seckill-service
+          uri: http://localhost:8084
+          predicates:
+            - Path=/api/**
+          filters:
+            - StripPrefix=1

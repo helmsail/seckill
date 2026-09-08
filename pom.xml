@@ -17,11 +17,18 @@
 
     <properties>
         <java.version>17</java.version>
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
     </properties>
 
-    <!-- 统一版本管理 -->
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.lmax</groupId>
                 <artifactId>disruptor</artifactId>
@@ -95,7 +102,6 @@
         </dependencies>
     </dependencyManagement>
 
-    <!-- 子模块 -->
     <modules>
         <module>seckill-common</module>
         <module>support</module>
@@ -104,6 +110,7 @@
         <module>seckill-job</module>
         <module>seckill-service</module>
         <module>seckill-processor</module>
+        <module>seckill-gateway</module>
     </modules>
 
     <build>
