@@ -10,9 +10,6 @@ import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -20,7 +17,6 @@ public class RateLimitCheckService {
 
     private final RedissonClient redissonClient;
     private final SeckillConfig config;
-    private final Map<String, Boolean> initialized = new ConcurrentHashMap<>();
 
     public boolean check(String userId) {
         if (!config.getCheck().isRateLimit()) {
@@ -33,14 +29,12 @@ public class RateLimitCheckService {
         String key = String.format(SeckillServiceKey.KEY_RATE_LIMIT, userId);
         RRateLimiter rateLimiter = redissonClient.getRateLimiter(key);
 
-        initialized.computeIfAbsent(key, k -> {
-            rateLimiter.trySetRate(
-                    RateType.OVERALL,
-                    config.getRateLimit().getMaxCount(),
-                    config.getRateLimit().getWindowSeconds(),
-                    RateIntervalUnit.SECONDS);
-            return true;
-        });
+        // trySetRate 是幂等的，重复调用无影响
+        rateLimiter.trySetRate(
+                RateType.OVERALL,
+                config.getRateLimit().getMaxCount(),
+                config.getRateLimit().getWindowSeconds(),
+                RateIntervalUnit.SECONDS);
 
         boolean acquired = rateLimiter.tryAcquire();
         if (!acquired) {

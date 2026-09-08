@@ -10,6 +10,7 @@ import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -24,11 +25,15 @@ public class ActivityCloseJobHandler {
     public void execute() {
         log.info("活动关闭任务启动");
 
-        List<ActivityDTO> activeActivities = activityService.listByStatus(ActivityStatus.ACTIVE);
+        // 查询 ACTIVE 和 PENDING 状态的活动
+        List<ActivityDTO> activities = new ArrayList<>();
+        activities.addAll(activityService.listByStatus(ActivityStatus.ACTIVE));
+        activities.addAll(activityService.listByStatus(ActivityStatus.PENDING));
+
         LocalDateTime now = LocalDateTime.now();
         int closed = 0;
 
-        for (ActivityDTO activity : activeActivities) {
+        for (ActivityDTO activity : activities) {
             if (now.isAfter(activity.getEndTime())) {
                 try {
                     activityService.updateStatus(activity.getActivityNo(), ActivityStatus.ENDED);

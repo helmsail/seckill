@@ -14,9 +14,6 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.List;
 
-/**
- * 秒杀 SKU 服务实现
- */
 @Service
 @RequiredArgsConstructor
 public class SeckillSkuServiceImpl implements SeckillSkuBizService {
@@ -36,7 +33,8 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
             throw new BizException(ResultEnum.PRODUCT_NOT_FOUND);
         }
         if (request.getRequiredStatus() != null) {
-            Activity activity = activityMapper.selectById(product.getActivityNo());
+            Activity activity = activityMapper.selectOne(
+                    new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, product.getActivityNo()));
             if (activity == null || activity.getActivityStatus() != request.getRequiredStatus()) {
                 throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
             }
@@ -73,7 +71,8 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
             throw new BizException(ResultEnum.PRODUCT_NOT_FOUND);
         }
         if (request.getRequiredStatus() != null) {
-            Activity activity = activityMapper.selectById(product.getActivityNo());
+            Activity activity = activityMapper.selectOne(
+                    new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, product.getActivityNo()));
             if (activity == null || activity.getActivityStatus() != request.getRequiredStatus()) {
                 throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
             }

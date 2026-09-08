@@ -14,23 +14,18 @@ public class SeckillIdempotentService {
 
     private final RedisService redisService;
 
+    /**
+     * 尝试处理（原子操作，基于 SETNX）
+     *
+     * @return true 表示可以处理，false 表示已处理过
+     */
     public boolean tryProcess(String traceId) {
         String key = String.format(SeckillServiceKey.KEY_SECKILL_RESULT, traceId);
-        String current = redisService.get(key);
-
-        if (current == null) {
-            log.warn("秒杀结果已过期: traceId={}", traceId);
-            return false;
+        Boolean success = redisService.setIfAbsent(key, SeckillResultStatus.PROCESSING);
+        if (Boolean.TRUE.equals(success)) {
+            log.info("秒杀开始处理: traceId={}", traceId);
         }
-
-        if (!SeckillResultStatus.PENDING.equals(current)) {
-            log.info("秒杀已处理过: traceId={}, status={}", traceId, current);
-            return false;
-        }
-
-        redisService.set(key, SeckillResultStatus.PROCESSING);
-        log.info("秒杀开始处理: traceId={}", traceId);
-        return true;
+        return Boolean.TRUE.equals(success);
     }
 
     public void markSuccess(String traceId, String orderNo) {

@@ -35,6 +35,11 @@ public class BlacklistCheckService {
         return Boolean.TRUE.equals(exists);
     }
 
+    /**
+     * 检查活动状态
+     *
+     * 仅对 PENDING + 窗口期内的请求拒绝，其余一概通过
+     */
     public boolean checkActivityStatus(String activityNo, String userId) {
         if (!config.getCheck().isActivityStatus()) {
             return true;
@@ -42,10 +47,11 @@ public class BlacklistCheckService {
 
         ActivityDTO activity = activityQueryService.getActivityByNo(activityNo);
         if (activity == null) {
-            return false;
+            return true;
         }
 
-        if (activity.getActivityStatus() == ActivityStatus.ACTIVE) {
+        // 仅对待开始状态进行窗口期检测
+        if (activity.getActivityStatus() != ActivityStatus.PENDING) {
             return true;
         }
 
@@ -60,7 +66,7 @@ public class BlacklistCheckService {
             return false;
         }
 
-        return false;
+        return true;
     }
 
     public void addBlacklist(String userId, String reason) {

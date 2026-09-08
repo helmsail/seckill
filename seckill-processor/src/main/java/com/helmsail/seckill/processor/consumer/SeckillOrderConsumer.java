@@ -114,7 +114,7 @@ public class SeckillOrderConsumer implements RocketMQListener<String> {
     }
 
     private SeckillSkuDTO getSkuInfo(SeckillRequest request) {
-        List<SeckillSkuDTO> skus = seckillSkuService.listBySkProductId(request.getActivityNo());
+        List<SeckillSkuDTO> skus = seckillSkuService.listBySkProductId(request.getSkProductId());
         return skus.stream()
                 .filter(sku -> sku.getSkuNo().equals(request.getSkuNo()))
                 .findFirst()
