@@ -4,7 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.mq.MqTopic;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.common.redis.SeckillKey;
+import com.helmsail.seckill.common.redis.SeckillResultStatus;
+import com.helmsail.seckill.common.redis.SeckillServiceKey;
 import com.helmsail.seckill.common.request.SeckillRequest;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.service.activity.ActivityQueryService;
@@ -28,7 +29,6 @@ import java.util.concurrent.TimeUnit;
 public class SeckillService {
 
     private static final String TRACE_ID_KEY = "traceId";
-    private static final String STATUS_PENDING = "pending";
 
     private final RateLimitCheckService rateLimitCheckService;
     private final BlacklistCheckService blacklistCheckService;
@@ -66,8 +66,8 @@ public class SeckillService {
         request.setUserId(userId);
         sendMqMessage(request);
 
-        String resultKey = String.format(SeckillKey.KEY_SECKILL_RESULT, traceId);
-        redisService.set(resultKey, STATUS_PENDING, config.getResult().getExpireSeconds(), TimeUnit.SECONDS);
+        String resultKey = String.format(SeckillServiceKey.KEY_SECKILL_RESULT, traceId);
+        redisService.set(resultKey, SeckillResultStatus.PENDING, config.getResult().getExpireSeconds(), TimeUnit.SECONDS);
 
         log.info("秒杀请求已提交: userId={}, activityNo={}, skuNo={}, traceId={}", userId, activityNo, skuNo, traceId);
         return traceId;
@@ -84,7 +84,7 @@ public class SeckillService {
     }
 
     public String pollResult(String traceId) {
-        String resultKey = String.format(SeckillKey.KEY_SECKILL_RESULT, traceId);
+        String resultKey = String.format(SeckillServiceKey.KEY_SECKILL_RESULT, traceId);
         return redisService.get(resultKey);
     }
 }

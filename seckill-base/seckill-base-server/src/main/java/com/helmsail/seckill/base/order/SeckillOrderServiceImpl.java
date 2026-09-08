@@ -11,9 +11,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 
-/**
- * 秒杀订单服务实现
- */
 @Service
 @RequiredArgsConstructor
 public class SeckillOrderServiceImpl implements SeckillOrderBizService {
@@ -61,6 +58,10 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
         if (order == null) {
             throw new BizException(ResultEnum.NOT_FOUND);
         }
+        SeckillOrderStatus currentStatus = SeckillOrderStatus.values()[order.getOrderStatus()];
+        if (!SeckillOrderStatus.canTransit(currentStatus, SeckillOrderStatus.PAID)) {
+            return;
+        }
         order.setOrderStatus(SeckillOrderStatus.PAID.getCode());
         order.setPaidTime(LocalDateTime.now());
         seckillOrderMapper.updateById(order);
@@ -72,6 +73,10 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
                 new LambdaQueryWrapper<SeckillOrder>().eq(SeckillOrder::getOrderNo, orderNo));
         if (order == null) {
             throw new BizException(ResultEnum.NOT_FOUND);
+        }
+        SeckillOrderStatus currentStatus = SeckillOrderStatus.values()[order.getOrderStatus()];
+        if (!SeckillOrderStatus.canTransit(currentStatus, SeckillOrderStatus.CLOSED)) {
+            return;
         }
         order.setOrderStatus(SeckillOrderStatus.CLOSED.getCode());
         seckillOrderMapper.updateById(order);
