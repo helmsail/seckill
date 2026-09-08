@@ -1,11 +1,8 @@
-package com.helmsail.seckill.service.constant;
+package com.helmsail.seckill.common.redis;
 
-/**
- * 秒杀服务 Redis Key 常量
- */
-public final class SeckillServiceKey {
+public final class SeckillKey {
 
-    private SeckillServiceKey() {}
+    private SeckillKey() {}
 
     public static final String KEY_RATE_LIMIT = "seckill:rate:limit:%s";
     public static final String KEY_BLACKLIST = "seckill:blacklist:%s";

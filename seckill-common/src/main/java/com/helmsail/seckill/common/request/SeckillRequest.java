@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.request;
+package com.helmsail.seckill.common.request;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -15,4 +15,6 @@ public class SeckillRequest {
 
     @Min(value = 1, message = "购买数量至少为 1")
     private int quantity = 1;
+
+    private String userId;
 }

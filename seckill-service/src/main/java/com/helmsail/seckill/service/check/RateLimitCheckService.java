@@ -1,7 +1,7 @@
 package com.helmsail.seckill.service.check;
 
+import com.helmsail.seckill.common.redis.SeckillKey;
 import com.helmsail.seckill.service.config.SeckillConfig;
-import com.helmsail.seckill.service.constant.SeckillServiceKey;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RRateLimiter;
@@ -30,7 +30,7 @@ public class RateLimitCheckService {
     }
 
     public boolean isRateLimited(String userId) {
-        String key = String.format(SeckillServiceKey.KEY_RATE_LIMIT, userId);
+        String key = String.format(SeckillKey.KEY_RATE_LIMIT, userId);
         RRateLimiter rateLimiter = redissonClient.getRateLimiter(key);
 
         initialized.computeIfAbsent(key, k -> {
