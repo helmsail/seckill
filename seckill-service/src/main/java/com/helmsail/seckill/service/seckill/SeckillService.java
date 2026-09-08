@@ -1,7 +1,7 @@
 package com.helmsail.seckill.service.seckill;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.mq.MqProducerService;
 import com.helmsail.seckill.common.mq.MqTopic;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.redis.SeckillKey;
@@ -14,7 +14,10 @@ import com.helmsail.seckill.service.config.SeckillConfig;
 import com.helmsail.seckill.service.tracing.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.slf4j.MDC;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -30,9 +33,10 @@ public class SeckillService {
     private final RateLimitCheckService rateLimitCheckService;
     private final BlacklistCheckService blacklistCheckService;
     private final ActivityQueryService activityQueryService;
-    private final MqProducerService mqProducerService;
     private final RedisService redisService;
     private final SeckillConfig config;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final ObjectMapper objectMapper;
 
     public String executeSeckill(SeckillRequest request) {
         String userId = UserContext.currentUserId();
@@ -60,13 +64,23 @@ public class SeckillService {
         }
 
         request.setUserId(userId);
-        mqProducerService.send(MqTopic.SECKILL_ORDER, request);
+        sendMqMessage(request);
 
         String resultKey = String.format(SeckillKey.KEY_SECKILL_RESULT, traceId);
         redisService.set(resultKey, STATUS_PENDING, config.getResult().getExpireSeconds(), TimeUnit.SECONDS);
 
         log.info("秒杀请求已提交: userId={}, activityNo={}, skuNo={}, traceId={}", userId, activityNo, skuNo, traceId);
         return traceId;
+    }
+
+    private void sendMqMessage(SeckillRequest request) {
+        try {
+            String json = objectMapper.writeValueAsString(request);
+            Message<String> message = MessageBuilder.withPayload(json).build();
+            rocketMQTemplate.send(MqTopic.SECKILL_ORDER, message);
+        } catch (Exception e) {
+            throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(), "发送消息失败");
+        }
     }
 
     public String pollResult(String traceId) {

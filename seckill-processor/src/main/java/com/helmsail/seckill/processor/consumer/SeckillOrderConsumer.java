@@ -1,5 +1,6 @@
 package com.helmsail.seckill.processor.consumer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.order.CreateSeckillOrderRequest;
 import com.helmsail.seckill.base.order.SeckillOrderService;
 import com.helmsail.seckill.base.sku.SeckillSkuDTO;
@@ -21,7 +22,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 @RocketMQMessageListener(topic = "seckill-order-topic", consumerGroup = "seckill-order-consumer-group")
-public class SeckillOrderConsumer implements RocketMQListener<SeckillRequest> {
+public class SeckillOrderConsumer implements RocketMQListener<String> {
 
     @DubboReference
     private SeckillSkuService seckillSkuService;
@@ -32,9 +33,18 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillRequest> {
     private final SeckillIdempotentService idempotentService;
     private final StockService stockService;
     private final PurchaseLimitService purchaseLimitService;
+    private final ObjectMapper objectMapper;
 
     @Override
-    public void onMessage(SeckillRequest request) {
+    public void onMessage(String json) {
+        SeckillRequest request;
+        try {
+            request = objectMapper.readValue(json, SeckillRequest.class);
+        } catch (Exception e) {
+            log.error("消息反序列化失败: {}", e.getMessage());
+            return;
+        }
+
         String traceId = request.getActivityNo() + ":" + request.getSkuNo();
 
         if (!idempotentService.tryProcess(traceId)) {
