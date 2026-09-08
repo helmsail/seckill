@@ -15,6 +15,8 @@ public final class SeckillKey {
      * Key: seckill:activity:info
      * Field: {activityNo}
      * Value: 活动信息 JSON
+     *
+     * 包含所有活动（待开始、进行中、已暂停、已结束）
      */
     public static final String KEY_ACTIVITY_INFO = "seckill:activity:info";
 
