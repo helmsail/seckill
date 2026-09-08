@@ -89,6 +89,13 @@
             <optional>true</optional>
         </dependency>
         
+        <!-- RocketMQ（可选，MqProducerService 使用） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <optional>true</optional>
+        </dependency>
+        
         <!-- JWT -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

@@ -7,7 +7,7 @@ import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.product.SeckillProductDTO;
 import com.helmsail.seckill.base.product.SeckillProductService;
-import com.helmsail.seckill.base.redis.SeckillKey;
+import com.helmsail.seckill.base.redis.SeckillCacheKey;
 import com.helmsail.seckill.base.sku.SeckillSkuDTO;
 import com.helmsail.seckill.base.sku.SeckillSkuService;
 import com.helmsail.seckill.common.redis.RedisService;
@@ -20,9 +20,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
-/**
- * C 端活动查询服务
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -52,7 +49,7 @@ public class ActivityQueryService {
     }
 
     private List<ActivityDTO> loadActivityList(String key) {
-        Map<Object, Object> all = redisService.hGetAll(SeckillKey.KEY_ACTIVITY_INFO);
+        Map<Object, Object> all = redisService.hGetAll(SeckillCacheKey.KEY_ACTIVITY_INFO);
         List<ActivityDTO> list = new ArrayList<>();
         for (Object value : all.values()) {
             ActivityDTO dto = parse((String) value, ActivityDTO.class);
@@ -66,7 +63,7 @@ public class ActivityQueryService {
     }
 
     private ActivityDTO loadActivityInfo(String key) {
-        return parse(redisService.hGet(SeckillKey.KEY_ACTIVITY_INFO, key), ActivityDTO.class);
+        return parse(redisService.hGet(SeckillCacheKey.KEY_ACTIVITY_INFO, key), ActivityDTO.class);
     }
 
     private ActivityDTO fallbackActivityInfo(String key) {
@@ -74,7 +71,7 @@ public class ActivityQueryService {
     }
 
     private List<Map<String, Object>> loadProductList(String key) {
-        return parse(redisService.get(String.format(SeckillKey.KEY_ACTIVITY_PRODUCT_LIST, key)), new TypeReference<>() {});
+        return parse(redisService.get(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, key)), new TypeReference<>() {});
     }
 
     private List<Map<String, Object>> fallbackProductList(String activityNo) {
@@ -123,7 +120,7 @@ public class ActivityQueryService {
     }
 
     public Integer getSkuStock(String skuNo) {
-        String stockKey = String.format(SeckillKey.KEY_SKU_STOCK, skuNo);
+        String stockKey = String.format(SeckillCacheKey.KEY_SKU_STOCK, skuNo);
         String stock = redisService.get(stockKey);
         return stock != null ? Integer.parseInt(stock) : 0;
     }

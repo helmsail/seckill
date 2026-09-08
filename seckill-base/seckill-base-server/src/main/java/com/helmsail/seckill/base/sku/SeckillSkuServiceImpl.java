@@ -27,24 +27,21 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
 
     @Override
     public void addSku(AddSkuRequest request) {
-        // 校验库存是否已从主域扣减
         if (!request.isStockDeducted()) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "请先从主域扣减库存");
         }
 
-        // 校验活动状态
         SeckillProduct product = seckillProductMapper.selectById(request.getSkProductId());
         if (product == null) {
-            throw new BizException(ResultEnum.NOT_FOUND);
+            throw new BizException(ResultEnum.PRODUCT_NOT_FOUND);
         }
         if (request.getRequiredStatus() != null) {
             Activity activity = activityMapper.selectById(product.getActivityNo());
             if (activity == null || activity.getActivityStatus() != request.getRequiredStatus()) {
-                throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "活动状态不满足添加条件");
+                throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
             }
         }
 
-        // 自动计算秒杀价
         BigDecimal seckillPrice = calculateSeckillPrice(
                 request.getOriginalPrice(),
                 product.getDiscountType(),
@@ -68,18 +65,17 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
                         .eq(SeckillSku::getSkProductId, request.getSkProductId())
                         .eq(SeckillSku::getSkuNo, request.getSkuNo()));
         if (sku == null) {
-            throw new BizException(ResultEnum.NOT_FOUND);
+            throw new BizException(ResultEnum.SKU_NOT_FOUND);
         }
 
-        // 校验活动状态
         SeckillProduct product = seckillProductMapper.selectById(request.getSkProductId());
         if (product == null) {
-            throw new BizException(ResultEnum.NOT_FOUND);
+            throw new BizException(ResultEnum.PRODUCT_NOT_FOUND);
         }
         if (request.getRequiredStatus() != null) {
             Activity activity = activityMapper.selectById(product.getActivityNo());
             if (activity == null || activity.getActivityStatus() != request.getRequiredStatus()) {
-                throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "活动状态不满足删除条件");
+                throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
             }
         }
 
@@ -98,9 +94,6 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
         return list.stream().map(this::toDTO).toList();
     }
 
-    /**
-     * 根据折扣类型自动计算秒杀价
-     */
     private BigDecimal calculateSeckillPrice(BigDecimal originalPrice, int discountType, BigDecimal discountParameter) {
         DiscountType type = DiscountType.values()[discountType];
         return switch (type) {

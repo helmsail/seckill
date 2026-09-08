@@ -30,10 +30,10 @@ public class UserServiceImpl implements UserBizService {
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername()));
         if (user == null) {
-            throw new BizException(ResultEnum.NOT_FOUND);
+            throw new BizException(ResultEnum.USER_NOT_FOUND);
         }
         if (!user.getPassword().equals(request.getPassword())) {
-            throw new BizException(ResultEnum.PARAM_ERROR);
+            throw new BizException(ResultEnum.USER_PASSWORD_ERROR);
         }
         UserDTO dto = new UserDTO();
         dto.setId(user.getId());
