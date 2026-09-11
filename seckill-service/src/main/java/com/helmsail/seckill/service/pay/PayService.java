@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.order.SeckillOrderDTO;
 import com.helmsail.seckill.base.order.SeckillOrderService;
 import com.helmsail.seckill.common.redis.RedisService;
+import com.helmsail.seckill.support.api.pay.PayChannelType;
 import com.helmsail.seckill.support.api.pay.PayRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,12 +41,12 @@ public class PayService {
         // 2. 查询订单
         SeckillOrderDTO order = seckillOrderService.getByOrderNo(orderNo);
 
-        // 3. 调用支付宝预支付
+        // 3. 调用支付渠道预创建
         PayRequest payRequest = new PayRequest();
         payRequest.setSubject(order.getRemark());
         payRequest.setOutTradeNo(order.getOrderNo());
         payRequest.setTotalAmount(String.valueOf(order.getPayAmount()));
-        String qrCode = supportPayService.preCreate(payRequest);
+        String qrCode = supportPayService.preCreate(PayChannelType.MOCK, payRequest);
 
         // 4. 缓存二维码
         redisService.set(cacheKey, qrCode, QR_CODE_CACHE_TTL, TimeUnit.SECONDS);
