@@ -3,8 +3,6 @@ package com.helmsail.seckill.service.cache;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -48,12 +46,12 @@ public class CaffeineCache<V> {
                 .refreshAfterWrite(refreshSeconds, TimeUnit.SECONDS)
                 .build(new CacheLoader<>() {
                     @Override
-                    public @NonNull V load(@NonNull String key) {
+                    public V load(String key) {
                         return loadWithFallback(key);
                     }
 
                     @Override
-                    public @Nullable V reload(@NonNull String key, @NonNull V oldValue) {
+                    public V reload(String key, V oldValue) {
                         return loadFromRedis(key);
                     }
                 });

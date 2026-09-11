@@ -48,7 +48,7 @@
         <!-- ShardingSphere -->
         <dependency>
             <groupId>org.apache.shardingsphere</groupId>
-            <artifactId>shardingsphere-jdbc-core</artifactId>
+            <artifactId>shardingsphere-jdbc</artifactId>
         </dependency>
 
 

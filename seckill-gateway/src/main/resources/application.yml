@@ -10,22 +10,24 @@ spring:
 
   cloud:
     gateway:
-      routes:
-        # C 端服务
-        - id: seckill-service
-          uri: http://localhost:8084
-          predicates:
-            - Path=/api/c/**
-          filters:
-            - StripPrefix=2
+      server:
+        webflux:
+          routes:
+            # C 端服务
+            - id: seckill-service
+              uri: http://localhost:8084
+              predicates:
+                - Path=/api/c/**
+              filters:
+                - StripPrefix=2
 
-        # 运营管理端
-        - id: seckill-admin
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/admin/**
-          filters:
-            - StripPrefix=2
+            # 运营管理端
+            - id: seckill-admin
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/admin/**
+              filters:
+                - StripPrefix=2
 
     sentinel:
       eager: true
