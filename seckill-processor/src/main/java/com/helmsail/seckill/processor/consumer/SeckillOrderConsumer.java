@@ -1,6 +1,10 @@
 package com.helmsail.seckill.processor.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.helmsail.seckill.base.activity.ActivityDTO;
+import com.helmsail.seckill.base.activity.ActivityService;
+import com.helmsail.seckill.base.activity.ActivityWindows;
+import com.helmsail.seckill.base.mq.MqGroup;
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.CreateSeckillOrderRequest;
 import com.helmsail.seckill.base.order.SeckillOrderService;
@@ -23,13 +27,14 @@ import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 @RocketMQMessageListener(
         topic = MqTopic.SECKILL_ORDER,
-        consumerGroup = "seckill-order-consumer-group",
+        consumerGroup = MqGroup.SECKILL_ORDER_CONSUMER,
         consumeMode = ConsumeMode.ORDERLY
 )
 public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
@@ -39,6 +44,9 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
     @DubboReference
     private SeckillOrderService seckillOrderService;
+
+    @DubboReference
+    private ActivityService activityService;
 
     private final SeckillIdempotentService idempotentService;
     private final StockService stockService;
@@ -57,6 +65,10 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
             if (request == null) return;
 
             String idempotentKey = buildIdempotentKey(request);
+            if (idempotentKey == null || idempotentKey.isBlank()) {
+                log.error("秒杀消息缺少 traceId，丢弃: {}", json);
+                return;
+            }
             if (!idempotentService.tryProcess(idempotentKey)) return;
 
             try {
@@ -71,6 +83,13 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
     }
 
     private void processSeckill(SeckillRequest request, String idempotentKey) {
+        // 活动级 DB 权威终判（缓存状态同步延迟窗口内的最后一道闸）
+        ActivityDTO activity = activityService.getByActivityNo(request.getActivityNo());
+        if (!ActivityWindows.isInEffectiveWindow(activity, LocalDateTime.now())) {
+            idempotentService.markFailed(idempotentKey, "活动不在生效时段");
+            return;
+        }
+
         SeckillProductSkuDTO sku = getSkuInfo(request);
         if (sku == null) {
             idempotentService.markFailed(idempotentKey, "SKU不存在");
@@ -84,33 +103,50 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
         }
 
         String userId = request.getUserId();
-        if (!purchaseLimitService.deduct(request.getActivityNo(), request.getSkuNo(),
-                userId, sku.getPurchaseLimit(), request.getQuantity())) {
-            idempotentService.markFailed(idempotentKey, "超过限购");
-            return;
-        }
+        // 扣减成功标记：异常路径仅回补“确定已扣”的资源（宁可少还，不超还）
+        boolean limitDeducted = false;
+        boolean stockDeducted = false;
+        try {
+            limitDeducted = purchaseLimitService.deduct(request.getActivityNo(), request.getSkuNo(),
+                    userId, sku.getPurchaseLimit(), request.getQuantity());
+            if (!limitDeducted) {
+                idempotentService.markFailed(idempotentKey, "超过限购");
+                return;
+            }
 
-        if (!stockService.deduct(request.getActivityNo(), request.getSkuNo(), request.getQuantity())) {
-            purchaseLimitService.restore(request.getActivityNo(), request.getSkuNo(),
-                    userId, request.getQuantity());
-            idempotentService.markFailed(idempotentKey, "库存不足");
-            return;
-        }
+            stockDeducted = stockService.deduct(request.getActivityNo(), request.getSkuNo(), request.getQuantity());
+            if (!stockDeducted) {
+                purchaseLimitService.restore(request.getActivityNo(), request.getSkuNo(),
+                        userId, request.getQuantity());
+                idempotentService.markFailed(idempotentKey, "库存不足");
+                return;
+            }
 
-        String orderNo = createOrder(request, sku);
-        if (orderNo == null) {
-            rollbackStockAndLimit(request, userId);
-            idempotentService.markFailed(idempotentKey, "创建订单失败");
-            return;
-        }
+            String orderNo = createOrder(request, sku);
+            if (orderNo == null) {
+                rollbackStockAndLimit(request, userId);
+                idempotentService.markFailed(idempotentKey, "创建订单失败");
+                return;
+            }
 
-        if (!sendCloseOrderMessage(orderNo)) {
-            rollbackStockAndLimit(request, userId);
-            idempotentService.markFailed(idempotentKey, "发送延迟消息失败");
-            return;
-        }
+            if (!sendCloseOrderMessage(orderNo)) {
+                // 订单已创建，不回补资源（订单生命周期仍成立）；
+                // 延迟消息缺失由 orderTimeoutJob 扫描补发关单消息兜底
+                log.error("发送延迟消息失败，依赖 orderTimeoutJob 兜底补关单: orderNo={}", orderNo);
+            }
 
-        idempotentService.markSuccess(idempotentKey, orderNo);
+            idempotentService.markSuccess(idempotentKey, orderNo);
+        } catch (Exception e) {
+            // 异常补偿：仅回补已明确成功的扣减（restore 自身幂等）
+            if (stockDeducted) {
+                stockService.restore(request.getActivityNo(), request.getSkuNo(), request.getQuantity());
+            }
+            if (limitDeducted) {
+                purchaseLimitService.restore(request.getActivityNo(), request.getSkuNo(),
+                        userId, request.getQuantity());
+            }
+            throw e;
+        }
     }
 
     private SeckillRequest parseRequest(String json) {
@@ -123,7 +159,8 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
     }
 
     private String buildIdempotentKey(SeckillRequest request) {
-        return request.getActivityNo() + ":" + request.getSkuNo();
+        // 幂等与结果定位统一使用请求级唯一键 traceId
+        return request.getTraceId();
     }
 
     private SeckillProductSkuDTO getSkuInfo(SeckillRequest request) {
@@ -134,6 +171,9 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
         try {
             CreateSeckillOrderRequest orderRequest = new CreateSeckillOrderRequest();
             orderRequest.setUserId(Long.parseLong(request.getUserId()));
+            orderRequest.setActivityNo(request.getActivityNo());
+            orderRequest.setSkuNo(request.getSkuNo());
+            orderRequest.setQuantity(request.getQuantity());
             orderRequest.setTotalAmount(sku.getOriginalPrice());
             orderRequest.setPayAmount(sku.getSeckillPrice());
             return seckillOrderService.createOrder(orderRequest);

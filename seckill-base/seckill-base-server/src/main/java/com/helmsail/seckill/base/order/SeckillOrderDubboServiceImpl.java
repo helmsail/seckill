@@ -4,6 +4,8 @@ import com.helmsail.seckill.common.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 
+import java.util.List;
+
 /**
  * 秒杀订单 Dubbo 服务实现
  *
@@ -36,7 +38,17 @@ public class SeckillOrderDubboServiceImpl implements SeckillOrderService {
     }
 
     @Override
-    public void closeOrder(String orderNo) {
-        seckillOrderBizService.closeOrder(orderNo);
+    public boolean closeOrder(String orderNo) {
+        return seckillOrderBizService.closeOrder(orderNo);
+    }
+
+    @Override
+    public List<String> listTimeoutOrderNos(int beforeMinutes, int limit) {
+        return seckillOrderBizService.listTimeoutOrderNos(beforeMinutes, limit);
+    }
+
+    @Override
+    public List<SeckillOrderDTO> listPaidOrdersSince(int minutesAgo, int limit) {
+        return seckillOrderBizService.listPaidOrdersSince(minutesAgo, limit);
     }
 }

@@ -16,6 +16,15 @@ public class CreateSeckillOrderRequest implements Serializable {
     /** 用户 ID */
     private Long userId;
 
+    /** 活动编号（关单回补/对账溯源） */
+    private String activityNo;
+
+    /** SKU 编号（关单回补/对账溯源） */
+    private String skuNo;
+
+    /** 购买数量 */
+    private Integer quantity;
+
     /** 原价 */
     private BigDecimal totalAmount;
 

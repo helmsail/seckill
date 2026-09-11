@@ -2,7 +2,7 @@ package com.helmsail.seckill.service.check;
 
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityStatus;
-import com.helmsail.seckill.base.redis.SeckillServiceKey;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.service.activity.ActivityQueryService;
 import com.helmsail.seckill.service.config.SeckillConfig;
@@ -30,7 +30,7 @@ public class BlacklistCheckService {
     }
 
     public boolean isBlacklisted(String userId) {
-        String key = String.format(SeckillServiceKey.KEY_BLACKLIST, userId);
+        String key = String.format(SeckillRedisKey.KEY_BLACKLIST, userId);
         Boolean exists = redisService.hasKey(key);
         return Boolean.TRUE.equals(exists);
     }
@@ -70,7 +70,7 @@ public class BlacklistCheckService {
     }
 
     public void addBlacklist(String userId, String reason) {
-        String key = String.format(SeckillServiceKey.KEY_BLACKLIST, userId);
+        String key = String.format(SeckillRedisKey.KEY_BLACKLIST, userId);
         int expireSeconds = config.getBlacklist().getExpireSeconds();
         if (expireSeconds > 0) {
             redisService.set(key, reason, expireSeconds, TimeUnit.SECONDS);
@@ -81,7 +81,7 @@ public class BlacklistCheckService {
     }
 
     public void removeBlacklist(String userId) {
-        String key = String.format(SeckillServiceKey.KEY_BLACKLIST, userId);
+        String key = String.format(SeckillRedisKey.KEY_BLACKLIST, userId);
         redisService.delete(key);
         log.info("用户移出黑名单: userId={}", userId);
     }

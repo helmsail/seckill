@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -27,6 +28,9 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
         SeckillOrder order = new SeckillOrder();
         order.setOrderNo(SeckillBusinessPrefix.SECKILL_ORDER.buildNo(snowflakeIdGenerator.nextId()));
         order.setUserId(request.getUserId());
+        order.setActivityNo(request.getActivityNo());
+        order.setSkuNo(request.getSkuNo());
+        order.setQuantity(request.getQuantity());
         order.setTotalAmount(request.getTotalAmount());
         order.setPayAmount(request.getPayAmount());
         order.setOrderStatus(SeckillOrderStatus.PENDING.getCode());
@@ -81,7 +85,7 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
     }
 
     @Override
-    public void closeOrder(String orderNo) {
+    public boolean closeOrder(String orderNo) {
         SeckillOrder order = seckillOrderMapper.selectOne(
                 new LambdaQueryWrapper<SeckillOrder>().eq(SeckillOrder::getOrderNo, orderNo));
         if (order == null) {
@@ -89,7 +93,7 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
         }
         SeckillOrderStatus currentStatus = SeckillOrderStatus.byCode(order.getOrderStatus());
         if (!SeckillOrderStatus.canTransit(currentStatus, SeckillOrderStatus.CLOSED)) {
-            return;
+            return false;
         }
         // 条件更新：仅 PENDING 可关闭，已支付/重复关单竞态时影响行数为 0
         int rows = seckillOrderMapper.update(null, new LambdaUpdateWrapper<SeckillOrder>()
@@ -99,6 +103,30 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
         if (rows == 0) {
             log.warn("关单跳过（状态已变更）: orderNo={}", orderNo);
         }
+        return rows > 0;
+    }
+
+    @Override
+    public List<String> listTimeoutOrderNos(int beforeMinutes, int limit) {
+        LocalDateTime before = LocalDateTime.now().minusMinutes(beforeMinutes);
+        // limit 为服务端内部常量（非外部入参）；分片表按分片生效，返回量最多为 分片数 × limit
+        List<SeckillOrder> orders = seckillOrderMapper.selectList(
+                new LambdaQueryWrapper<SeckillOrder>()
+                        .eq(SeckillOrder::getOrderStatus, SeckillOrderStatus.PENDING.getCode())
+                        .lt(SeckillOrder::getCreateTime, before)
+                        .last("LIMIT " + limit));
+        return orders.stream().map(SeckillOrder::getOrderNo).toList();
+    }
+
+    @Override
+    public List<SeckillOrderDTO> listPaidOrdersSince(int minutesAgo, int limit) {
+        LocalDateTime since = LocalDateTime.now().minusMinutes(minutesAgo);
+        List<SeckillOrder> orders = seckillOrderMapper.selectList(
+                new LambdaQueryWrapper<SeckillOrder>()
+                        .eq(SeckillOrder::getOrderStatus, SeckillOrderStatus.PAID.getCode())
+                        .ge(SeckillOrder::getPaidTime, since)
+                        .last("LIMIT " + limit));
+        return orders.stream().map(this::toDTO).toList();
     }
 
     private SeckillOrderDTO toDTO(SeckillOrder order) {
@@ -106,6 +134,9 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
         dto.setId(order.getId());
         dto.setOrderNo(order.getOrderNo());
         dto.setUserId(order.getUserId());
+        dto.setActivityNo(order.getActivityNo());
+        dto.setSkuNo(order.getSkuNo());
+        dto.setQuantity(order.getQuantity());
         dto.setTotalAmount(order.getTotalAmount());
         dto.setPayAmount(order.getPayAmount());
         dto.setOrderStatus(SeckillOrderStatus.byCode(order.getOrderStatus()));

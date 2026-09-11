@@ -20,8 +20,10 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   consumer:
     check: false
+    # 下单链路含多段远程调用（创单/关单），默认 1s 偏短
+    timeout: 3000
 
 rocketmq:
   name-server: ${ROCKETMQ_ADDR}
-  consumer:
-    group: seckill-consumer-group
+  producer:
+    group: seckill-producer

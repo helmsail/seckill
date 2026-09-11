@@ -20,4 +20,7 @@ public class SeckillRequest {
     private int quantity = 1;
 
     private String userId;
+
+    /** 链路追踪ID（网关生成，作为秒杀结果的唯一定位键） */
+    private String traceId;
 }

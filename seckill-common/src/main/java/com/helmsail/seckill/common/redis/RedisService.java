@@ -44,6 +44,10 @@ public class RedisService {
         return redisTemplate.opsForValue().setIfAbsent(key, value);
     }
 
+    public Boolean setIfAbsent(String key, String value, long timeout, TimeUnit unit) {
+        return redisTemplate.opsForValue().setIfAbsent(key, value, timeout, unit);
+    }
+
     // ========== Hash ==========
 
     public void hSet(String key, String field, String value) {
@@ -54,14 +58,24 @@ public class RedisService {
         return (String) redisTemplate.opsForHash().get(key, field);
     }
 
+    public Long hDel(String key, String... fields) {
+        return redisTemplate.opsForHash().delete(key, (Object[]) fields);
+    }
+
     public Map<Object, Object> hGetAll(String key) {
         return redisTemplate.opsForHash().entries(key);
     }
 
     // ========== Lua ==========
 
-    public <T> T executeLua(String script, List<String> keys, Object... args) {
-        DefaultRedisScript<T> redisScript = new DefaultRedisScript<>(script, (Class<T>) null);
+    /**
+     * 执行 Lua 脚本（返回整数）
+     *
+     * 必须显式指定返回类型：Spring Data Redis 在脚本 resultType 为 null 时
+     * 会丢弃返回值（恒返回 null 而脚本副作用仍生效），本仓库 Lua 均为整数语义。
+     */
+    public Long executeLua(String script, List<String> keys, Object... args) {
+        DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>(script, Long.class);
         return redisTemplate.execute(redisScript, keys, args);
     }
 }

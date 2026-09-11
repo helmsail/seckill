@@ -159,8 +159,12 @@ public class SeckillProductSkuServiceImpl implements SeckillProductSkuBizService
         if (item.getPurchaseLimit() != null && item.getPurchaseLimit() < 0) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "限购不能为负数: " + item.getSkuNo());
         }
-        if (calculateSeckillPrice(item).compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal seckillPrice = calculateSeckillPrice(item);
+        if (seckillPrice.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "秒杀价必须大于 0: " + item.getSkuNo());
+        }
+        if (seckillPrice.compareTo(item.getOriginalPrice()) > 0) {
+            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "秒杀价不得高于原价: " + item.getSkuNo());
         }
     }
 

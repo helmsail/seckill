@@ -5,7 +5,7 @@ import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
-import com.helmsail.seckill.base.redis.SeckillCacheKey;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
@@ -66,7 +66,7 @@ public class ActivityShelfJobHandler {
                 .filter(row -> row.getShelfStatus() != null && row.getShelfStatus() == 1)
                 .map(SeckillProductSkuDTO::getSkuNo)
                 .toList();
-        String key = String.format(SeckillCacheKey.KEY_ACTIVITY_SHELF, activityNo);
+        String key = String.format(SeckillRedisKey.KEY_ACTIVITY_SHELF, activityNo);
         redisService.executeLua(REBUILD_LUA, Collections.singletonList(key), onShelfSkuNos.toArray());
     }
 }

@@ -1,6 +1,7 @@
 package com.helmsail.seckill.service.seckill;
 
 import com.helmsail.seckill.base.seckill.SeckillRequest;
+import com.helmsail.seckill.base.seckill.SeckillResultVO;
 import com.helmsail.seckill.common.result.Result;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ public class SeckillController {
     }
 
     @GetMapping("/poll")
-    public Result<String> poll(@RequestParam String traceId) {
+    public Result<SeckillResultVO> poll(@RequestParam String traceId) {
         return Result.success(seckillService.pollResult(traceId));
     }
 }

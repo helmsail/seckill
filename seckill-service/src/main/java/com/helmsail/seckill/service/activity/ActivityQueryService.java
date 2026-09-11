@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
-import com.helmsail.seckill.base.activity.WeekBitmap;
+import com.helmsail.seckill.base.activity.ActivityWindows;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
-import com.helmsail.seckill.base.redis.SeckillCacheKey;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.service.cache.CaffeineCache;
 import jakarta.annotation.PostConstruct;
@@ -17,8 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -52,11 +51,15 @@ public class ActivityQueryService {
     }
 
     private List<ActivityDTO> loadActivityList(String key) {
-        Map<Object, Object> all = redisService.hGetAll(SeckillCacheKey.KEY_ACTIVITY_INFO);
+        Map<Object, Object> all = redisService.hGetAll(SeckillRedisKey.KEY_ACTIVITY_INFO);
         List<ActivityDTO> list = new ArrayList<>();
         for (Object value : all.values()) {
             ActivityDTO dto = parse((String) value, ActivityDTO.class);
-            if (dto != null) list.add(dto);
+            // 列表仅展示可购/待开始活动（暂停、关闭不出现）
+            if (dto != null && (dto.getActivityStatus() == ActivityStatus.ACTIVE
+                    || dto.getActivityStatus() == ActivityStatus.PENDING)) {
+                list.add(dto);
+            }
         }
         return list;
     }
@@ -66,7 +69,7 @@ public class ActivityQueryService {
     }
 
     private ActivityDTO loadActivityInfo(String key) {
-        return parse(redisService.hGet(SeckillCacheKey.KEY_ACTIVITY_INFO, key), ActivityDTO.class);
+        return parse(redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, key), ActivityDTO.class);
     }
 
     private ActivityDTO fallbackActivityInfo(String key) {
@@ -74,7 +77,7 @@ public class ActivityQueryService {
     }
 
     private List<SeckillProductSkuDTO> loadProductList(String key) {
-        return parse(redisService.get(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
+        return parse(redisService.get(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
                 new TypeReference<>() {});
     }
 
@@ -115,22 +118,12 @@ public class ActivityQueryService {
     }
 
     /**
-     * 抢购生效判定：状态为进行中 + 日期范围 + 当天时段 + 周位图
+     * 抢购生效判定（缓存数据，仅作前置过滤）
+     *
+     * 正确性以 processor 的 DB 权威终判为准（ActivityWindows 同一套规则）。
      */
     public boolean isInEffectiveWindow(String activityNo) {
-        ActivityDTO activity = getActivityByNo(activityNo);
-        if (activity == null || activity.getActivityStatus() != ActivityStatus.ACTIVE) {
-            return false;
-        }
-        LocalDate today = LocalDate.now();
-        if (today.isBefore(activity.getStartDate()) || today.isAfter(activity.getEndDate())) {
-            return false;
-        }
-        LocalTime now = LocalTime.now();
-        if (now.isBefore(activity.getStartTime()) || now.isAfter(activity.getEndTime())) {
-            return false;
-        }
-        return WeekBitmap.isActive(activity.getWeekBitmap(), today.getDayOfWeek());
+        return ActivityWindows.isInEffectiveWindow(getActivityByNo(activityNo), LocalDateTime.now());
     }
 
     /**
@@ -139,13 +132,13 @@ public class ActivityQueryService {
      * 正确性以 processor 的 DB 权威状态终判为准；名单滞后最多导致少量请求白跑。
      */
     public boolean isSkuOnShelf(String activityNo, String skuNo) {
-        String key = String.format(SeckillCacheKey.KEY_ACTIVITY_SHELF, activityNo);
+        String key = String.format(SeckillRedisKey.KEY_ACTIVITY_SHELF, activityNo);
         Long result = redisService.executeLua(SISMEMBER_LUA, Collections.singletonList(key), skuNo);
         return result != null && result > 0;
     }
 
     public Integer getSkuStock(String activityNo, String skuNo) {
-        String stockKey = String.format(SeckillCacheKey.KEY_SKU_STOCK, activityNo, skuNo);
+        String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, skuNo);
         String stock = redisService.get(stockKey);
         return stock != null ? Integer.parseInt(stock) : 0;
     }

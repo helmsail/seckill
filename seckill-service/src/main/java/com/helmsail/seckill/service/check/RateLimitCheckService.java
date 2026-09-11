@@ -1,6 +1,6 @@
 package com.helmsail.seckill.service.check;
 
-import com.helmsail.seckill.base.redis.SeckillServiceKey;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ public class RateLimitCheckService {
     }
 
     public boolean isRateLimited(String userId) {
-        String key = String.format(SeckillServiceKey.KEY_RATE_LIMIT, userId);
+        String key = String.format(SeckillRedisKey.KEY_RATE_LIMIT, userId);
         RRateLimiter rateLimiter = redissonClient.getRateLimiter(key);
 
         // trySetRate 是幂等的，重复调用无影响

@@ -30,7 +30,8 @@ public class SeckillConfig {
 
     @Data
     public static class Blacklist {
-        private int expireSeconds = 0;
+        /** 黑名单有效期（秒）：默认 24 小时，避免误伤用户永久失格（0=永久） */
+        private int expireSeconds = 24 * 60 * 60;
         private int windowBeforeSeconds = 300;
         private int windowAfterSeconds = 60;
     }

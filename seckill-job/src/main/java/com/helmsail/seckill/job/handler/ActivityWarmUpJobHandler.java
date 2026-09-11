@@ -6,7 +6,7 @@ import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
-import com.helmsail.seckill.base.redis.SeckillCacheKey;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
@@ -74,10 +74,15 @@ public class ActivityWarmUpJobHandler {
         log.info("开始预热活动: activityNo={}", activityNo);
 
         List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
+        if (rows.isEmpty()) {
+            // 无商品无需预热（同时避免为可被删除的空活动写入残留缓存）
+            log.info("活动无商品，跳过预热: activityNo={}", activityNo);
+            return;
+        }
 
-        redisService.hSet(SeckillCacheKey.KEY_ACTIVITY_INFO, activityNo,
+        redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo,
                 objectMapper.writeValueAsString(activity));
-        redisService.set(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
+        redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
                 objectMapper.writeValueAsString(rows));
         initStock(activityNo, rows);
 
@@ -86,8 +91,11 @@ public class ActivityWarmUpJobHandler {
 
     private void initStock(String activityNo, List<SeckillProductSkuDTO> rows) {
         for (SeckillProductSkuDTO row : rows) {
-            String stockKey = String.format(SeckillCacheKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
+            String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
             redisService.setIfAbsent(stockKey, String.valueOf(row.getActivityStock()));
+            // 初始总量键：restore（关单/回滚回补）的上界参照，写入后不再变更
+            String totalKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_TOTAL, activityNo, row.getSkuNo());
+            redisService.setIfAbsent(totalKey, String.valueOf(row.getActivityStock()));
         }
     }
 }

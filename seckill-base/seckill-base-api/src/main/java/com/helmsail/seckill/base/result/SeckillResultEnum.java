@@ -27,7 +27,9 @@ public enum SeckillResultEnum implements IResultCode {
     BLACKLISTED("blacklisted", "已被限制参与秒杀"),
 
     // ========== 订单 ==========
-    ORDER_NOT_FOUND("order_not_found", "订单不存在");
+    ORDER_NOT_FOUND("order_not_found", "订单不存在"),
+    ORDER_STATUS_NOT_ALLOWED("order_status_not_allowed", "订单状态不允许此操作"),
+    PAY_AMOUNT_MISMATCH("pay_amount_mismatch", "支付金额与订单不一致");
 
     private final String code;
     private final String message;

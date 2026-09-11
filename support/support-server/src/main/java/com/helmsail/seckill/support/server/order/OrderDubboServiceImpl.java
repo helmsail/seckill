@@ -5,10 +5,12 @@ import com.helmsail.seckill.support.api.order.CreateOrderRequest;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 
+import java.util.List;
+
 /**
  * 订单 Dubbo 服务实现
  *
- * retries = 0：创建订单无幂等键，自动重试会造成重复订单
+ * retries = 0：写路径不做 Dubbo 层自动重试，重投由调用方（MQ 消费/对账）负责
  */
 @DubboService(retries = 0)
 @RequiredArgsConstructor
@@ -19,5 +21,10 @@ public class OrderDubboServiceImpl implements OrderService {
     @Override
     public Long create(CreateOrderRequest request) {
         return orderBizService.create(request);
+    }
+
+    @Override
+    public List<String> listExistingOrderNos(List<String> orderNos) {
+        return orderBizService.listExistingOrderNos(orderNos);
     }
 }

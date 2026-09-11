@@ -54,7 +54,8 @@ public class SkuServiceImpl implements SkuBizService {
         }
         int rows = skuMapper.deductStock(skuNo, quantity);
         if (rows == 0) {
-            throw new BizException(SupportResultEnum.STOCK_INSUFFICIENT);
+            // rows=0 二义：SKU 不存在或库存不足（原子扣减 WHERE stock >= quantity）
+            throw new BizException(SupportResultEnum.STOCK_INSUFFICIENT.getCode(), "库存不足或 SKU 不存在");
         }
     }
 

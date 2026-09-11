@@ -26,6 +26,9 @@ public class SeckillOrder extends BaseEntity {
     private Long id;
     private String orderNo;
     private Long userId;
+    private String activityNo;
+    private String skuNo;
+    private Integer quantity;
     private BigDecimal totalAmount;
     private BigDecimal payAmount;
     private Integer orderStatus;

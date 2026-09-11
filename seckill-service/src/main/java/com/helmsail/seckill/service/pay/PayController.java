@@ -4,6 +4,8 @@ import com.helmsail.seckill.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/pay")
 @RequiredArgsConstructor
@@ -20,12 +22,13 @@ public class PayController {
     }
 
     /**
-     * 支付回调（tradeNo 为第三方支付流水号，Mock 渠道可不传）
+     * 支付回调（渠道异步通知，参数为渠道原始字段）
+     *
+     * Mock 渠道可不传 trade_no/total_amount；真实渠道字段以 verifyNotify 实现为准。
      */
     @PostMapping("/callback")
-    public Result<Void> callback(@RequestParam String orderNo,
-                                 @RequestParam(required = false) String tradeNo) {
-        payService.payCallback(orderNo, tradeNo);
+    public Result<Void> callback(@RequestParam Map<String, String> params) {
+        payService.payCallback(params);
         return Result.success();
     }
 }

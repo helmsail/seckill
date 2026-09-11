@@ -2,6 +2,8 @@ package com.helmsail.seckill.base.order;
 
 import com.helmsail.seckill.common.result.PageResult;
 
+import java.util.List;
+
 /**
  * 秒杀订单 Dubbo 服务接口
  */
@@ -31,7 +33,25 @@ public interface SeckillOrderService {
     void paySuccess(String orderNo, String tradeNo);
 
     /**
-     * 关闭订单
+     * 关闭订单（仅待支付可关闭）
+     *
+     * @return true=本次调用完成关闭（可据此回补库存/限购）；false=状态已变更，无需处理
      */
-    void closeOrder(String orderNo);
+    boolean closeOrder(String orderNo);
+
+    /**
+     * 查询超时未支付的订单号（兜底补关单）
+     *
+     * @param beforeMinutes 创建时间早于 now - beforeMinutes
+     * @param limit         单次上限（分片表按分片生效，总量为分片数 × limit）
+     */
+    List<String> listTimeoutOrderNos(int beforeMinutes, int limit);
+
+    /**
+     * 查询指定时间窗内已支付的订单（订单同步对账用）
+     *
+     * @param minutesAgo 支付时间在 now - minutesAgo 之后
+     * @param limit      单次上限（分片表按分片生效，总量为分片数 × limit）
+     */
+    List<SeckillOrderDTO> listPaidOrdersSince(int minutesAgo, int limit);
 }

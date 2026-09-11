@@ -2,6 +2,8 @@ package com.helmsail.seckill.base.order;
 
 import com.helmsail.seckill.common.result.PageResult;
 
+import java.util.List;
+
 /**
  * 秒杀订单内部服务接口
  */
@@ -15,5 +17,9 @@ public interface SeckillOrderBizService {
 
     void paySuccess(String orderNo, String tradeNo);
 
-    void closeOrder(String orderNo);
+    boolean closeOrder(String orderNo);
+
+    List<String> listTimeoutOrderNos(int beforeMinutes, int limit);
+
+    List<SeckillOrderDTO> listPaidOrdersSince(int minutesAgo, int limit);
 }

@@ -26,6 +26,11 @@ dubbo:
   consumer:
     check: false
 
+rocketmq:
+  name-server: ${ROCKETMQ_ADDR}
+  producer:
+    group: seckill-producer
+
 xxl:
   job:
     admin:

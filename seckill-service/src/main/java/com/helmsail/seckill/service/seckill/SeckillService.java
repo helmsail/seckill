@@ -2,10 +2,10 @@ package com.helmsail.seckill.service.seckill;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.mq.MqTopic;
-import com.helmsail.seckill.base.redis.SeckillResultStatus;
-import com.helmsail.seckill.base.redis.SeckillServiceKey;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.base.seckill.SeckillRequest;
+import com.helmsail.seckill.base.seckill.SeckillResultVO;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.result.ResultEnum;
@@ -23,7 +23,7 @@ import org.slf4j.MDC;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -43,6 +43,10 @@ public class SeckillService {
         String activityNo = request.getActivityNo();
         String skuNo = request.getSkuNo();
         String traceId = MDC.get(BaggageKeys.TRACE_ID);
+        if (traceId == null || traceId.isBlank()) {
+            // 兜底：绕过网关直连时无 traceId，生成临时值保证结果键唯一
+            traceId = UUID.randomUUID().toString().replace("-", "");
+        }
 
         if (!rateLimitCheckService.check(userId)) {
             throw new BizException(SeckillResultEnum.RATE_LIMITED);
@@ -72,10 +76,10 @@ public class SeckillService {
         }
 
         request.setUserId(userId);
-        sendMqMessage(request);
+        request.setTraceId(traceId);
 
-        String resultKey = String.format(SeckillServiceKey.KEY_SECKILL_RESULT, traceId);
-        redisService.set(resultKey, SeckillResultStatus.PENDING, config.getResult().getExpireSeconds(), TimeUnit.SECONDS);
+        // 结果键由消费端（processor）统一创建与回写；发送失败直接抛错，用户无需轮询
+        sendMqMessage(request);
 
         log.info("秒杀请求已提交: userId={}, activityNo={}, skuNo={}, traceId={}", userId, activityNo, skuNo, traceId);
         return traceId;
@@ -91,8 +95,17 @@ public class SeckillService {
         }
     }
 
-    public String pollResult(String traceId) {
-        String resultKey = String.format(SeckillServiceKey.KEY_SECKILL_RESULT, traceId);
-        return redisService.get(resultKey);
+    public SeckillResultVO pollResult(String traceId) {
+        String resultKey = String.format(SeckillRedisKey.KEY_SECKILL_RESULT, traceId);
+        String json = redisService.get(resultKey);
+        if (json == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, SeckillResultVO.class);
+        } catch (Exception e) {
+            log.error("秒杀结果解析失败: traceId={}", traceId, e);
+            return null;
+        }
     }
 }

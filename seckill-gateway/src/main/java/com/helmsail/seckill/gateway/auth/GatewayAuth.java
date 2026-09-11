@@ -21,7 +21,9 @@ public final class GatewayAuth {
     private static final String[] WHITELIST = {
             "/api/admin/user/login",
             "/api/consumer/user/login",
-            "/api/consumer/activity/**"
+            "/api/consumer/activity/**",
+            // 支付渠道异步通知（由渠道验签守卫，无用户 JWT）
+            "/api/consumer/pay/callback"
     };
 
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
