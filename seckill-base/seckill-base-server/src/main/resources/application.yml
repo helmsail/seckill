@@ -1,14 +1,17 @@
 server:
-  port: 8081
+  port: 18081
 
 spring:
   application:
     name: seckill-base-server
+  config:
+    import:
+      - optional:file:.env[.properties]
   datasource:
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
-    url: jdbc:shardingsphere:classpath:shardingsphere-sharding.yaml
-    username: root
-    password: root
+    url: jdbc:shardingsphere:classpath:shardingsphere-sharding.yaml?placeholder-type=environment
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
 
 mybatis-plus:
   global-config:
@@ -23,11 +26,11 @@ dubbo:
     name: seckill-base-server
     qos-enable: false
   registry:
-    address: nacos://127.0.0.1:8848
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   protocol:
     name: dubbo
-    port: 20881
+    port: 28081
 
 jwt:
-  secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!
-  expiration: 86400000
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}

@@ -23,5 +23,5 @@ public class Order extends BaseEntity {
     private BigDecimal totalAmount;
     private BigDecimal payAmount;
     private LocalDateTime paidTime;
-    private String remark;
+    private String tradeNo;
 }

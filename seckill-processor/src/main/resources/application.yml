@@ -1,24 +1,27 @@
 server:
-  port: 8085
+  port: 18085
 
 spring:
   application:
     name: seckill-processor
+  config:
+    import:
+      - optional:file:.env[.properties]
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
 
 dubbo:
   application:
     name: seckill-processor
     qos-enable: false
   registry:
-    address: nacos://127.0.0.1:8848
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   consumer:
     check: false
 
 rocketmq:
-  name-server: 127.0.0.1:9876
+  name-server: ${ROCKETMQ_ADDR}
   consumer:
     group: seckill-consumer-group

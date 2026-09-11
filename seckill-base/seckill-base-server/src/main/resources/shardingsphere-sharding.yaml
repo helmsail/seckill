@@ -1,8 +1,10 @@
+# 数据源占位符由 application.yml 中 url 的 ?placeholder-type=environment 开启
+# 语法 ${KEY::默认值}，KEY 从环境变量（.env 注入）读取，格式为 SS 专有语法（必须带 ::）
 dataSources:
   ds_0:
-    url: jdbc:mysql://localhost:3306/seckill?useUnicode=true&characterEncoding=utf8&useSSL=false
-    username: root
-    password: root
+    url: jdbc:mysql://${MYSQL_HOST::}:${MYSQL_PORT::}/seckill?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME::}
+    password: ${MYSQL_PASSWORD::}
     driverClassName: com.mysql.cj.jdbc.Driver
 
 rules:

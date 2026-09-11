@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 18080
 
 spring:
   application:
@@ -7,6 +7,7 @@ spring:
   config:
     import:
       - optional:nacos:seckill-gateway.yml
+      - optional:file:.env[.properties]
 
   cloud:
     gateway:
@@ -15,7 +16,7 @@ spring:
           routes:
             # C 端服务
             - id: seckill-service
-              uri: http://localhost:8084
+              uri: http://${SECKILL_SERVICE_HOST}:18084
               predicates:
                 - Path=/api/c/**
               filters:
@@ -23,7 +24,7 @@ spring:
 
             # 运营管理端
             - id: seckill-admin
-              uri: http://localhost:8082
+              uri: http://${SECKILL_ADMIN_HOST}:18082
               predicates:
                 - Path=/api/admin/**
               filters:
@@ -32,12 +33,14 @@ spring:
     sentinel:
       eager: true
       transport:
-        dashboard: localhost:8085
+        dashboard: ${SENTINEL_DASHBOARD_ADDR}
       datasource:
         # 网关限流规则，从 Nacos 动态读取
         gw-flow:
           nacos:
-            server-addr: 127.0.0.1:8848
+            server-addr: ${NACOS_ADDR}
+            username: ${NACOS_USERNAME}
+            password: ${NACOS_PASSWORD}
             namespace: public
             data-id: ${spring.application.name}-sentinel-gw-flow.json
             group-id: SENTINEL_GROUP
@@ -46,9 +49,12 @@ spring:
 
   nacos:
     config:
-      server-addr: 127.0.0.1:8848
+      server-addr: ${NACOS_ADDR}
+      username: ${NACOS_USERNAME}
+      password: ${NACOS_PASSWORD}
       file-extension: yml
 
 # JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）
 jwt:
-  secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}

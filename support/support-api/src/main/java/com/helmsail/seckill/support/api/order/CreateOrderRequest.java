@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * 创建订单请求
@@ -28,6 +29,9 @@ public class CreateOrderRequest implements Serializable {
     /** 实付金额 */
     private BigDecimal payAmount;
 
-    /** 备注 */
-    private String remark;
+    /** 支付时间 */
+    private LocalDateTime paidTime;
+
+    /** 第三方支付流水号 */
+    private String tradeNo;
 }

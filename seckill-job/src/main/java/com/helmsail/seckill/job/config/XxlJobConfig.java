@@ -11,19 +11,19 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class XxlJobConfig {
 
-    @Value("${xxl.job.admin.addresses:http://127.0.0.1:8080/xxl-job-admin}")
+    @Value("${xxl.job.admin.addresses}")
     private String adminAddresses;
 
-    @Value("${xxl.job.executor.appname:seckill-job}")
+    @Value("${xxl.job.executor.appname}")
     private String appname;
 
-    @Value("${xxl.job.executor.port:9999}")
+    @Value("${xxl.job.executor.port}")
     private int port;
 
-    @Value("${xxl.job.executor.logpath:/data/applogs/xxl-job/jobhandler}")
+    @Value("${xxl.job.executor.logpath}")
     private String logPath;
 
-    @Value("${xxl.job.executor.logretentiondays:30}")
+    @Value("${xxl.job.executor.logretentiondays}")
     private int logRetentionDays;
 
     @Bean

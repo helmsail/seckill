@@ -1,19 +1,22 @@
 server:
-  port: 8082
+  port: 18082
 
 spring:
   application:
     name: seckill-admin
+  config:
+    import:
+      - optional:file:.env[.properties]
 
 dubbo:
   application:
     name: seckill-admin
     qos-enable: false
   registry:
-    address: nacos://127.0.0.1:8848
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   consumer:
     check: false
 
 jwt:
-  secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!
-  expiration: 86400000
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}

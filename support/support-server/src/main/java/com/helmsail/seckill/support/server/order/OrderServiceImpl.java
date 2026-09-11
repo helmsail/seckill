@@ -21,7 +21,8 @@ public class OrderServiceImpl implements OrderBizService {
         order.setOrderSource(request.getOrderSource().getCode());
         order.setTotalAmount(request.getTotalAmount());
         order.setPayAmount(request.getPayAmount());
-        order.setRemark(request.getRemark());
+        order.setPaidTime(request.getPaidTime());
+        order.setTradeNo(request.getTradeNo());
         orderMapper.insert(order);
         return order.getId();
     }

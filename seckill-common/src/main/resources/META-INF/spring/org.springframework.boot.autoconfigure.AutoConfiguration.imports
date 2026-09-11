@@ -4,3 +4,4 @@ com.helmsail.seckill.common.jwt.JwtAutoConfiguration
 com.helmsail.seckill.common.id.IdAutoConfiguration
 com.helmsail.seckill.common.redis.RedisAutoConfiguration
 com.helmsail.seckill.common.tracing.TracingAutoConfiguration
+com.helmsail.seckill.common.jackson.JacksonAutoConfiguration

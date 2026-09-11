@@ -45,11 +45,12 @@ CREATE TABLE IF NOT EXISTS t_order (
     total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '原价',
     pay_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '实付金额',
     paid_time DATETIME DEFAULT NULL COMMENT '支付时间',
-    remark VARCHAR(255) DEFAULT NULL COMMENT '备注',
+    trade_no VARCHAR(64) DEFAULT NULL COMMENT '第三方支付流水号',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0=未删除，1=已删除',
     UNIQUE KEY uk_order_no (order_no),
     KEY idx_user_id (user_id),
+    KEY idx_trade_no (trade_no),
     KEY idx_is_deleted (is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';

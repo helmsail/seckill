@@ -1,14 +1,17 @@
 server:
-  port: 8080
+  port: 18086
 
 spring:
   application:
     name: support-server
+  config:
+    import:
+      - optional:file:.env[.properties]
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/seckill?useUnicode=true&characterEncoding=utf8&useSSL=false
-    username: root
-    password: root
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/seckill?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
 
 mybatis-plus:
   global-config:
@@ -23,11 +26,11 @@ dubbo:
     name: support-server
     qos-enable: false
   registry:
-    address: nacos://127.0.0.1:8848
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   protocol:
     name: dubbo
-    port: 20880
+    port: 28080
 
 jwt:
-  secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!
-  expiration: 86400000
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION}
