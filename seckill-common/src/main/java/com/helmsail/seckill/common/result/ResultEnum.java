@@ -13,6 +13,7 @@ public enum ResultEnum implements IResultCode {
     SYSTEM_ERROR("system_error", "系统异常"),
     PARAM_ERROR("param_error", "参数错误"),
     NOT_FOUND("not_found", "资源不存在"),
+    FORBIDDEN("forbidden", "无权限访问"),
 
     // ========== 锁 ==========
     LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败"),

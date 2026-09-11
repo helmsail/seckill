@@ -20,7 +20,8 @@ public final class GatewayAuth {
     /** 免认证路径 */
     private static final String[] WHITELIST = {
             "/api/admin/user/login",
-            "/api/c/activity/**"
+            "/api/consumer/user/login",
+            "/api/consumer/activity/**"
     };
 
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
