@@ -1,5 +1,6 @@
 package com.helmsail.seckill.base.order;
 
+import com.helmsail.seckill.common.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 
@@ -23,7 +24,7 @@ public class SeckillOrderDubboServiceImpl implements SeckillOrderService {
     }
 
     @Override
-    public SeckillOrderPageResult pageByUserId(SeckillOrderPageQuery query) {
+    public PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query) {
         return seckillOrderBizService.pageByUserId(query);
     }
 

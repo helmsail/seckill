@@ -1,36 +1,39 @@
 package com.helmsail.seckill.processor.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.CreateSeckillOrderRequest;
 import com.helmsail.seckill.base.order.SeckillOrderService;
+import com.helmsail.seckill.base.seckill.SeckillRequest;
 import com.helmsail.seckill.base.sku.SeckillSkuDTO;
 import com.helmsail.seckill.base.sku.SeckillSkuService;
-import com.helmsail.seckill.common.request.SeckillRequest;
+import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.helmsail.seckill.processor.seckill.PurchaseLimitService;
 import com.helmsail.seckill.processor.seckill.SeckillIdempotentService;
 import com.helmsail.seckill.processor.seckill.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.Message;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 @RocketMQMessageListener(
-        topic = "seckill-order-topic",
+        topic = MqTopic.SECKILL_ORDER,
         consumerGroup = "seckill-order-consumer-group",
         consumeMode = ConsumeMode.ORDERLY
 )
-public class SeckillOrderConsumer implements RocketMQListener<String> {
+public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
     @DubboReference
     private SeckillSkuService seckillSkuService;
@@ -44,22 +47,27 @@ public class SeckillOrderConsumer implements RocketMQListener<String> {
     private final ObjectMapper objectMapper;
     private final RocketMQTemplate rocketMQTemplate;
 
-    private static final String CLOSE_ORDER_TOPIC = "seckill-close-order-topic";
     private static final int CLOSE_ORDER_DELAY_LEVEL = 14; // 10分钟
 
     @Override
-    public void onMessage(String json) {
-        SeckillRequest request = parseRequest(json);
-        if (request == null) return;
-
-        String idempotentKey = buildIdempotentKey(request);
-        if (!idempotentService.tryProcess(idempotentKey)) return;
-
+    public void onMessage(MessageExt message) {
+        BaggageUtils.restore(message.getProperties());
         try {
-            processSeckill(request, idempotentKey);
-        } catch (Exception e) {
-            log.error("秒杀处理异常: key={}", idempotentKey, e);
-            idempotentService.markFailed(idempotentKey, "系统异常");
+            String json = new String(message.getBody(), StandardCharsets.UTF_8);
+            SeckillRequest request = parseRequest(json);
+            if (request == null) return;
+
+            String idempotentKey = buildIdempotentKey(request);
+            if (!idempotentService.tryProcess(idempotentKey)) return;
+
+            try {
+                processSeckill(request, idempotentKey);
+            } catch (Exception e) {
+                log.error("秒杀处理异常: key={}", idempotentKey, e);
+                idempotentService.markFailed(idempotentKey, "系统异常");
+            }
+        } finally {
+            BaggageUtils.clear();
         }
     }
 
@@ -136,8 +144,8 @@ public class SeckillOrderConsumer implements RocketMQListener<String> {
 
     private boolean sendCloseOrderMessage(String orderNo) {
         try {
-            Message<String> message = MessageBuilder.withPayload(orderNo).build();
-            rocketMQTemplate.syncSend(CLOSE_ORDER_TOPIC, message, CLOSE_ORDER_DELAY_LEVEL);
+            Message<String> message = BaggageUtils.buildMessage(orderNo);
+            rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message, CLOSE_ORDER_DELAY_LEVEL);
             return true;
         } catch (Exception e) {
             log.error("发送延迟消息失败: orderNo={}", orderNo, e);

@@ -1,9 +1,11 @@
 package com.helmsail.seckill.gateway.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.helmsail.seckill.common.jwt.JwtUtils;
+import com.helmsail.seckill.gateway.auth.GatewayAuth;
 import com.helmsail.seckill.gateway.result.GatewayError;
 import com.helmsail.seckill.gateway.result.Result;
-import com.helmsail.seckill.gateway.util.JwtUtils;
+import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -14,14 +16,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
-import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 /**
  * 鉴权过滤器
  *
- * JWT 校验 → 提取 userId → 移除 Authorization → 设置可信 userId
+ * JWT 校验（一次解析）→ 提取 userId/role → 移除 Authorization → 设置可信 userId；
+ * role 写入 exchange 属性，供 AuthorizationGlobalFilter 做授权校验。
  */
 @Slf4j
 @Component
@@ -34,13 +36,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
     private final JwtUtils jwtUtils;
     private final ObjectMapper mapper;
-    private final AntPathMatcher pathMatcher = new AntPathMatcher();
-
-    /** 白名单：无需 JWT 校验的路径 */
-    private static final String[] WHITE_LIST = {
-            "/api/admin/user/login",
-            "/api/c/activity/**"
-    };
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -48,7 +43,7 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         String path = request.getURI().getPath();
 
         // 白名单跳过鉴权
-        if (isWhiteListed(path)) {
+        if (GatewayAuth.isWhiteListed(path)) {
             return chain.filter(exchange);
         }
 
@@ -60,8 +55,11 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
         String token = authHeader.substring(BEARER_PREFIX.length());
         String userId;
+        String role;
         try {
-            userId = jwtUtils.getUserId(token);
+            Claims claims = jwtUtils.parseToken(token);
+            userId = claims.get("userId", String.class);
+            role = claims.get("role", String.class);
         } catch (Exception e) {
             log.warn("JWT 解析失败: {}", e.getMessage());
             return unauthorized(exchange, GatewayError.UNAUTHORIZED, "认证令牌无效");
@@ -70,6 +68,9 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         if (userId == null || userId.isEmpty()) {
             return unauthorized(exchange, GatewayError.UNAUTHORIZED, "令牌中缺少用户信息");
         }
+
+        // 认证上下文：角色放入 exchange 属性，供授权过滤器读取
+        exchange.getAttributes().put(GatewayAuth.ATTR_ROLE, role);
 
         // 清理 + 设置 userId
         ServerHttpRequest mutatedRequest = request.mutate()
@@ -81,15 +82,6 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
                 .build();
 
         return chain.filter(exchange.mutate().request(mutatedRequest).build());
-    }
-
-    private boolean isWhiteListed(String path) {
-        for (String pattern : WHITE_LIST) {
-            if (pathMatcher.match(pattern, path)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, GatewayError error, String message) {

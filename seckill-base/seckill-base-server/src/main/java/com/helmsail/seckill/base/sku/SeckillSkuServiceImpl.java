@@ -6,6 +6,7 @@ import com.helmsail.seckill.base.activity.ActivityMapper;
 import com.helmsail.seckill.base.product.DiscountType;
 import com.helmsail.seckill.base.product.SeckillProduct;
 import com.helmsail.seckill.base.product.SeckillProductMapper;
+import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.ResultEnum;
 import lombok.RequiredArgsConstructor;
@@ -30,13 +31,13 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
 
         SeckillProduct product = seckillProductMapper.selectById(request.getSkProductId());
         if (product == null) {
-            throw new BizException(ResultEnum.PRODUCT_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.PRODUCT_NOT_FOUND);
         }
         if (request.getRequiredStatus() != null) {
             Activity activity = activityMapper.selectOne(
                     new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, product.getActivityNo()));
             if (activity == null || activity.getActivityStatus() != request.getRequiredStatus()) {
-                throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
+                throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
             }
         }
 
@@ -63,18 +64,18 @@ public class SeckillSkuServiceImpl implements SeckillSkuBizService {
                         .eq(SeckillSku::getSkProductId, request.getSkProductId())
                         .eq(SeckillSku::getSkuNo, request.getSkuNo()));
         if (sku == null) {
-            throw new BizException(ResultEnum.SKU_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.SKU_NOT_FOUND);
         }
 
         SeckillProduct product = seckillProductMapper.selectById(request.getSkProductId());
         if (product == null) {
-            throw new BizException(ResultEnum.PRODUCT_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.PRODUCT_NOT_FOUND);
         }
         if (request.getRequiredStatus() != null) {
             Activity activity = activityMapper.selectOne(
                     new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, product.getActivityNo()));
             if (activity == null || activity.getActivityStatus() != request.getRequiredStatus()) {
-                throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
+                throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
             }
         }
 

@@ -14,11 +14,17 @@ rules:
           standard:
             shardingColumn: user_id
             shardingAlgorithmName: sk_order_inline
+        keyGenerateStrategy:
+          column: id
+          keyGeneratorName: snowflake
     shardingAlgorithms:
       sk_order_inline:
         type: INLINE
         props:
           algorithm-expression: sk_order_$->{user_id % 4}
+    keyGenerators:
+      snowflake:
+        type: SNOWFLAKE
 
 props:
   sql-show: true

@@ -1,2 +1,6 @@
 com.helmsail.seckill.common.exception.ExceptionAutoConfiguration
 com.helmsail.seckill.common.mybatis.MyBatisPlusAutoConfiguration
+com.helmsail.seckill.common.jwt.JwtAutoConfiguration
+com.helmsail.seckill.common.id.IdAutoConfiguration
+com.helmsail.seckill.common.redis.RedisAutoConfiguration
+com.helmsail.seckill.common.tracing.TracingAutoConfiguration

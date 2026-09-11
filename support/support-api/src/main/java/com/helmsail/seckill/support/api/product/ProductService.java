@@ -1,5 +1,7 @@
 package com.helmsail.seckill.support.api.product;
 
+import com.helmsail.seckill.common.result.PageResult;
+
 /**
  * 商品 Dubbo 服务接口
  */
@@ -13,5 +15,5 @@ public interface ProductService {
     /**
      * 分页查询商品
      */
-    ProductPageResult page(ProductPageQuery query);
+    PageResult<ProductDTO> page(ProductPageQuery query);
 }

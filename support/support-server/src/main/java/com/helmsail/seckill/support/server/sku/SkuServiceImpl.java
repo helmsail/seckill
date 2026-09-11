@@ -3,10 +3,11 @@ package com.helmsail.seckill.support.server.sku;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.helmsail.seckill.common.exception.BizException;
+import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.common.result.ResultEnum;
+import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
 import com.helmsail.seckill.support.api.sku.SkuPageQuery;
-import com.helmsail.seckill.support.api.sku.SkuPageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +47,7 @@ public class SkuServiceImpl implements SkuBizService {
         }
         int rows = skuMapper.deductStock(skuNo, quantity);
         if (rows == 0) {
-            throw new BizException(ResultEnum.STOCK_INSUFFICIENT);
+            throw new BizException(SupportResultEnum.STOCK_INSUFFICIENT);
         }
     }
 
@@ -59,7 +60,7 @@ public class SkuServiceImpl implements SkuBizService {
     }
 
     @Override
-    public SkuPageResult page(SkuPageQuery query) {
+    public PageResult<SkuDTO> page(SkuPageQuery query) {
         Page<Sku> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<Sku> wrapper = new LambdaQueryWrapper<>();
         if (query.getSpuNo() != null) {
@@ -67,7 +68,7 @@ public class SkuServiceImpl implements SkuBizService {
         }
         skuMapper.selectPage(page, wrapper);
         List<SkuDTO> list = page.getRecords().stream().map(this::toDTO).toList();
-        return new SkuPageResult(list, page.getTotal(), page.getCurrent(), page.getSize());
+        return new PageResult<>(list, page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     private SkuDTO toDTO(Sku sku) {

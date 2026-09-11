@@ -1,5 +1,6 @@
 package com.helmsail.seckill.common.dubbo;
 
+import com.helmsail.seckill.common.exception.BizException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.common.constants.CommonConstants;
 import org.apache.dubbo.common.extension.Activate;
@@ -26,7 +27,12 @@ public class DubboProviderLogFilter implements Filter {
         long elapsed = System.currentTimeMillis() - start;
 
         if (result.hasException()) {
-            log.error("[Dubbo Provider] {}.{} 异常, 耗时: {}ms", service, method, elapsed, result.getException());
+            Throwable ex = result.getException();
+            if (ex instanceof BizException) {
+                log.warn("[Dubbo Provider] {}.{} 业务异常: {}, 耗时: {}ms", service, method, ex.getMessage(), elapsed);
+            } else {
+                log.error("[Dubbo Provider] {}.{} 异常, 耗时: {}ms", service, method, elapsed, ex);
+            }
         } else {
             log.debug("[Dubbo Provider] {}.{} 成功, 耗时: {}ms", service, method, elapsed);
         }

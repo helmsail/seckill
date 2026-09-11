@@ -4,7 +4,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -13,8 +12,9 @@ import java.util.Map;
 
 /**
  * JWT 工具类
+ *
+ * 由 JwtAutoConfiguration 按需注册（配置 jwt.secret 后生效）。
  */
-@Component
 public class JwtUtils {
 
     @Value("${jwt.secret}")
@@ -22,6 +22,9 @@ public class JwtUtils {
 
     @Value("${jwt.expiration:86400000}")
     private long expiration;
+
+    /** 签名密钥缓存（secret 配置注入后首次使用时构建） */
+    private volatile SecretKey cachedKey;
 
     /**
      * 生成 Token
@@ -46,27 +49,10 @@ public class JwtUtils {
                 .getPayload();
     }
 
-    /**
-     * 从 Token 中获取指定字段
-     */
-    public String getClaim(String token, String key) {
-        Claims claims = parseToken(token);
-        return claims.get(key, String.class);
-    }
-
-    /**
-     * 验证 Token 是否有效
-     */
-    public boolean isValid(String token) {
-        try {
-            Claims claims = parseToken(token);
-            return !claims.getExpiration().before(new Date());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     private SecretKey getKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        if (cachedKey == null) {
+            cachedKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        }
+        return cachedKey;
     }
 }

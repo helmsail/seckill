@@ -1,5 +1,7 @@
 package com.helmsail.seckill.base.order;
 
+import com.helmsail.seckill.common.result.PageResult;
+
 /**
  * 秒杀订单内部服务接口
  */
@@ -9,7 +11,7 @@ public interface SeckillOrderBizService {
 
     SeckillOrderDTO getByOrderNo(String orderNo);
 
-    SeckillOrderPageResult pageByUserId(SeckillOrderPageQuery query);
+    PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query);
 
     void paySuccess(String orderNo);
 

@@ -1,1 +1,0 @@
-tracingDubboConsumer=com.helmsail.seckill.service.tracing.TracingDubboConsumerFilter

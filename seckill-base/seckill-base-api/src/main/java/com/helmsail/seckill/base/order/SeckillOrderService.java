@@ -1,5 +1,7 @@
 package com.helmsail.seckill.base.order;
 
+import com.helmsail.seckill.common.result.PageResult;
+
 /**
  * 秒杀订单 Dubbo 服务接口
  */
@@ -18,7 +20,7 @@ public interface SeckillOrderService {
     /**
      * 使用用户 ID 查找订单（分页）
      */
-    SeckillOrderPageResult pageByUserId(SeckillOrderPageQuery query);
+    PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query);
 
     /**
      * 订单支付成功

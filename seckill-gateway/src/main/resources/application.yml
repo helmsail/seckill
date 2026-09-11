@@ -49,6 +49,6 @@ spring:
       server-addr: 127.0.0.1:8848
       file-extension: yml
 
-# JWT（与 seckill-admin 共享同一个 secret）
+# JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）
 jwt:
   secret: seckill-jwt-secret-key-must-be-at-least-256-bits-long!!

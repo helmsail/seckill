@@ -1,8 +1,8 @@
 package com.helmsail.seckill.processor.seckill;
 
+import com.helmsail.seckill.base.redis.SeckillResultStatus;
+import com.helmsail.seckill.base.redis.SeckillServiceKey;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.common.redis.SeckillResultStatus;
-import com.helmsail.seckill.common.redis.SeckillServiceKey;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

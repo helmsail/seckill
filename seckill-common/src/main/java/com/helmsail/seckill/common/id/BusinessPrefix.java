@@ -16,4 +16,11 @@ public interface BusinessPrefix {
      * 描述
      */
     String getDesc();
+
+    /**
+     * 业务编号 = 前缀 + 雪花 ID
+     */
+    default String buildNo(long snowflakeId) {
+        return getPrefix() + String.valueOf(snowflakeId);
+    }
 }

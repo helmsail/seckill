@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
+import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.common.result.ResultEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,7 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
     @Override
     public String createOrder(CreateSeckillOrderRequest request) {
         SeckillOrder order = new SeckillOrder();
-        order.setOrderNo(String.valueOf(SeckillBusinessPrefix.SECKILL_ORDER.getPrefix()) + snowflakeIdGenerator.nextId());
+        order.setOrderNo(SeckillBusinessPrefix.SECKILL_ORDER.buildNo(snowflakeIdGenerator.nextId()));
         order.setUserId(request.getUserId());
         order.setTotalAmount(request.getTotalAmount());
         order.setPayAmount(request.getPayAmount());
@@ -42,11 +43,11 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
     }
 
     @Override
-    public SeckillOrderPageResult pageByUserId(SeckillOrderPageQuery query) {
+    public PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query) {
         Page<SeckillOrder> page = new Page<>(query.getPageNum(), query.getPageSize());
         seckillOrderMapper.selectPage(page,
                 new LambdaQueryWrapper<SeckillOrder>().eq(SeckillOrder::getUserId, query.getUserId()));
-        return new SeckillOrderPageResult(
+        return new PageResult<>(
                 page.getRecords().stream().map(this::toDTO).toList(),
                 page.getTotal(), page.getCurrent(), page.getSize());
     }

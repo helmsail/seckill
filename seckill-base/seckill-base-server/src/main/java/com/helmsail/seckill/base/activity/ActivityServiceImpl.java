@@ -2,9 +2,9 @@ package com.helmsail.seckill.base.activity;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
+import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.result.ResultEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +23,7 @@ public class ActivityServiceImpl implements ActivityBizService {
     @Override
     public String create(ActivityRequest request) {
         Activity activity = new Activity();
-        activity.setActivityNo(String.valueOf(SeckillBusinessPrefix.SECKILL_ACTIVITY.getPrefix()) + snowflakeIdGenerator.nextId());
+        activity.setActivityNo(SeckillBusinessPrefix.SECKILL_ACTIVITY.buildNo(snowflakeIdGenerator.nextId()));
         activity.setActivityName(request.getActivityName());
         activity.setStartTime(request.getStartTime());
         activity.setEndTime(request.getEndTime());
@@ -43,7 +43,7 @@ public class ActivityServiceImpl implements ActivityBizService {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
         if (activity == null) {
-            throw new BizException(ResultEnum.ACTIVITY_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
         }
         return toDTO(activity);
     }
@@ -53,11 +53,11 @@ public class ActivityServiceImpl implements ActivityBizService {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
         if (activity == null) {
-            throw new BizException(ResultEnum.ACTIVITY_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
         }
         ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
         if (!ActivityStatus.canTransit(currentStatus, targetStatus)) {
-            throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
                     "状态流转不合法: " + currentStatus.getDesc() + " → " + targetStatus.getDesc());
         }
         activity.setActivityStatus(targetStatus.getCode());
@@ -76,11 +76,11 @@ public class ActivityServiceImpl implements ActivityBizService {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
         if (activity == null) {
-            throw new BizException(ResultEnum.ACTIVITY_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
         }
         ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
         if (currentStatus != requiredStatus) {
-            throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
                     "当前状态不满足修改条件，当前状态: " + currentStatus.getDesc());
         }
         updateFields(activity, request);
@@ -92,11 +92,11 @@ public class ActivityServiceImpl implements ActivityBizService {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
         if (activity == null) {
-            throw new BizException(ResultEnum.ACTIVITY_NOT_FOUND);
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
         }
         ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
         if (currentStatus != requiredStatus) {
-            throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
                     "当前状态不满足删除条件，当前状态: " + currentStatus.getDesc());
         }
         activityMapper.deleteById(activity.getId());

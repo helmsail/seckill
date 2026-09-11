@@ -21,6 +21,7 @@ public class AutoFillMetaObjectHandler implements MetaObjectHandler {
 
     @Override
     public void updateFill(MetaObject metaObject) {
-        this.strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+        // 严格填充只在字段为 null 时生效；先查后改场景 updateTime 已带旧值会被跳过，故无条件覆盖
+        this.setFieldValByName("updateTime", LocalDateTime.now(), metaObject);
     }
 }

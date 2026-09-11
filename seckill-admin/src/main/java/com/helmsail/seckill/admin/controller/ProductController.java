@@ -1,10 +1,10 @@
 package com.helmsail.seckill.admin.controller;
 
 import com.helmsail.seckill.base.product.*;
+import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.product.ProductDTO;
 import com.helmsail.seckill.support.api.product.ProductPageQuery;
-import com.helmsail.seckill.support.api.product.ProductPageResult;
 import com.helmsail.seckill.support.api.product.ProductService;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
@@ -30,7 +30,7 @@ public class ProductController {
      * 分页查询主域商品
      */
     @GetMapping("/list")
-    public Result<ProductPageResult> page(ProductPageQuery query) {
+    public Result<PageResult<ProductDTO>> page(ProductPageQuery query) {
         return Result.success(productService.page(query));
     }
 

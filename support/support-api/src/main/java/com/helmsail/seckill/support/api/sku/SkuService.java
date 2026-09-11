@@ -1,5 +1,7 @@
 package com.helmsail.seckill.support.api.sku;
 
+import com.helmsail.seckill.common.result.PageResult;
+
 import java.util.List;
 
 /**
@@ -30,5 +32,5 @@ public interface SkuService {
     /**
      * 分页查询 SKU
      */
-    SkuPageResult page(SkuPageQuery query);
+    PageResult<SkuDTO> page(SkuPageQuery query);
 }

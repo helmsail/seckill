@@ -1,2 +1,4 @@
 dubboProviderLog=com.helmsail.seckill.common.dubbo.DubboProviderLogFilter
 dubboConsumerException=com.helmsail.seckill.common.dubbo.DubboConsumerExceptionFilter
+baggageProvider=com.helmsail.seckill.common.tracing.dubbo.BaggageProviderFilter
+baggageConsumer=com.helmsail.seckill.common.tracing.dubbo.BaggageConsumerFilter

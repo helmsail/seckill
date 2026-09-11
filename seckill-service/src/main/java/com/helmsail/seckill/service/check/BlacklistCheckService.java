@@ -2,8 +2,8 @@ package com.helmsail.seckill.service.check;
 
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityStatus;
+import com.helmsail.seckill.base.redis.SeckillServiceKey;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.common.redis.SeckillServiceKey;
 import com.helmsail.seckill.service.activity.ActivityQueryService;
 import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;

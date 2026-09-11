@@ -1,7 +1,7 @@
 package com.helmsail.seckill.service.seckill;
 
+import com.helmsail.seckill.base.seckill.SeckillRequest;
 import com.helmsail.seckill.common.result.Result;
-import com.helmsail.seckill.common.request.SeckillRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

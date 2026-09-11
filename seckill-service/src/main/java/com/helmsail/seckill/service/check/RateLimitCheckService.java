@@ -1,6 +1,6 @@
 package com.helmsail.seckill.service.check;
 
-import com.helmsail.seckill.common.redis.SeckillServiceKey;
+import com.helmsail.seckill.base.redis.SeckillServiceKey;
 import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

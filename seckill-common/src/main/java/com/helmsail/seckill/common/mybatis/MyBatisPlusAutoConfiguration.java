@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -21,6 +22,7 @@ public class MyBatisPlusAutoConfiguration {
      * 分页拦截器（限制最大分页大小为 500）
      */
     @Bean
+    @ConditionalOnMissingBean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
         PaginationInnerInterceptor paginationInterceptor = new PaginationInnerInterceptor(DbType.MYSQL);
@@ -33,6 +35,7 @@ public class MyBatisPlusAutoConfiguration {
      * 自动填充处理器
      */
     @Bean
+    @ConditionalOnMissingBean
     public AutoFillMetaObjectHandler autoFillMetaObjectHandler() {
         return new AutoFillMetaObjectHandler();
     }

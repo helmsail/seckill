@@ -1,5 +1,6 @@
 package com.helmsail.seckill.gateway.exception;
 
+import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.gateway.result.GatewayError;
 import com.helmsail.seckill.gateway.result.Result;
@@ -22,9 +23,12 @@ import reactor.core.publisher.Mono;
  *
  * 实现 ErrorWebExceptionHandler（Spring WebFlux 官方异常处理契约），
  * 统一处理路由转发异常，返回 JSON 格式响应。
+ *
+ * 优先级低于 Sentinel 的 BlockExceptionHandler（限流异常由 Sentinel 处理），
+ * 其余异常经 Sentinel 透传后由本类处理。
  */
 @Slf4j
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 1)
 @Component
 @RequiredArgsConstructor
 public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
@@ -34,6 +38,11 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {
         if (exchange.getResponse().isCommitted()) {
+            return Mono.error(ex);
+        }
+
+        // 防御性透传：限流异常交给 Sentinel 自己的处理器
+        if (ex instanceof BlockException) {
             return Mono.error(ex);
         }
 

@@ -3,7 +3,6 @@ package com.helmsail.seckill.common.exception;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.common.result.ResultEnum;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -17,7 +16,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @Slf4j
 @RestControllerAdvice
-@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class WebMvcExceptionHandler {
 

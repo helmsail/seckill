@@ -1,17 +1,18 @@
 package com.helmsail.seckill.common.redis;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-@Component
-@ConditionalOnClass(StringRedisTemplate.class)
+/**
+ * Redis 操作封装
+ *
+ * 基于 StringRedisTemplate 封装常用操作，由 RedisAutoConfiguration 按需注册。
+ */
 @RequiredArgsConstructor
 public class RedisService {
 

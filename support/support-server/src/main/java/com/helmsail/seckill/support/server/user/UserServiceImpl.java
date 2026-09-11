@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.jwt.JwtUtils;
 import com.helmsail.seckill.common.result.ResultEnum;
+import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.user.LoginRequest;
 import com.helmsail.seckill.support.api.user.LoginResponse;
 import com.helmsail.seckill.support.api.user.UserDTO;
@@ -30,16 +31,19 @@ public class UserServiceImpl implements UserBizService {
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername()));
         if (user == null) {
-            throw new BizException(ResultEnum.USER_NOT_FOUND);
+            throw new BizException(SupportResultEnum.USER_NOT_FOUND);
         }
         if (!user.getPassword().equals(request.getPassword())) {
-            throw new BizException(ResultEnum.USER_PASSWORD_ERROR);
+            throw new BizException(SupportResultEnum.USER_PASSWORD_ERROR);
         }
         UserDTO dto = new UserDTO();
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
         dto.setRole(user.getRole());
-        String token = jwtUtils.generateToken(Map.of("userId", user.getId(), "username", user.getUsername()));
+        String token = jwtUtils.generateToken(Map.of(
+                "userId", String.valueOf(user.getId()),
+                "username", user.getUsername(),
+                "role", String.valueOf(user.getRole())));
         return new LoginResponse(token, dto);
     }
 }

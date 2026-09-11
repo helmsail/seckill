@@ -1,8 +1,8 @@
 package com.helmsail.seckill.support.server.sku;
 
+import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
 import com.helmsail.seckill.support.api.sku.SkuPageQuery;
-import com.helmsail.seckill.support.api.sku.SkuPageResult;
 
 import java.util.List;
 
@@ -19,5 +19,5 @@ public interface SkuBizService {
 
     void addStock(String skuNo, int quantity);
 
-    SkuPageResult page(SkuPageQuery query);
+    PageResult<SkuDTO> page(SkuPageQuery query);
 }

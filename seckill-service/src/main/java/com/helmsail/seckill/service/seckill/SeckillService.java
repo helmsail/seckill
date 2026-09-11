@@ -1,24 +1,26 @@
 package com.helmsail.seckill.service.seckill;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.helmsail.seckill.base.mq.MqTopic;
+import com.helmsail.seckill.base.redis.SeckillResultStatus;
+import com.helmsail.seckill.base.redis.SeckillServiceKey;
+import com.helmsail.seckill.base.result.SeckillResultEnum;
+import com.helmsail.seckill.base.seckill.SeckillRequest;
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.mq.MqTopic;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.common.redis.SeckillResultStatus;
-import com.helmsail.seckill.common.redis.SeckillServiceKey;
-import com.helmsail.seckill.common.request.SeckillRequest;
 import com.helmsail.seckill.common.result.ResultEnum;
+import com.helmsail.seckill.common.tracing.BaggageKeys;
+import com.helmsail.seckill.common.tracing.UserContext;
+import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.helmsail.seckill.service.activity.ActivityQueryService;
 import com.helmsail.seckill.service.check.BlacklistCheckService;
 import com.helmsail.seckill.service.check.RateLimitCheckService;
 import com.helmsail.seckill.service.config.SeckillConfig;
-import com.helmsail.seckill.service.tracing.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.slf4j.MDC;
 import org.springframework.messaging.Message;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -27,8 +29,6 @@ import java.util.concurrent.TimeUnit;
 @Service
 @RequiredArgsConstructor
 public class SeckillService {
-
-    private static final String TRACE_ID_KEY = "traceId";
 
     private final RateLimitCheckService rateLimitCheckService;
     private final BlacklistCheckService blacklistCheckService;
@@ -42,24 +42,24 @@ public class SeckillService {
         String userId = UserContext.currentUserId();
         String activityNo = request.getActivityNo();
         String skuNo = request.getSkuNo();
-        String traceId = MDC.get(TRACE_ID_KEY);
+        String traceId = MDC.get(BaggageKeys.TRACE_ID);
 
         if (!rateLimitCheckService.check(userId)) {
-            throw new BizException(ResultEnum.RATE_LIMITED);
+            throw new BizException(SeckillResultEnum.RATE_LIMITED);
         }
 
         if (!blacklistCheckService.checkActivityStatus(activityNo, userId)) {
-            throw new BizException(ResultEnum.ACTIVITY_STATUS_ERROR);
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
         }
 
         if (!blacklistCheckService.check(userId)) {
-            throw new BizException(ResultEnum.BLACKLISTED);
+            throw new BizException(SeckillResultEnum.BLACKLISTED);
         }
 
         if (config.getCheck().isStock()) {
             Integer stock = activityQueryService.getSkuStock(skuNo);
             if (stock == null || stock < request.getQuantity()) {
-                throw new BizException(ResultEnum.STOCK_INSUFFICIENT);
+                throw new BizException(SeckillResultEnum.STOCK_INSUFFICIENT);
             }
         }
 
@@ -76,7 +76,7 @@ public class SeckillService {
     private void sendMqMessage(SeckillRequest request) {
         try {
             String json = objectMapper.writeValueAsString(request);
-            Message<String> message = MessageBuilder.withPayload(json).build();
+            Message<String> message = BaggageUtils.buildMessage(json);
             rocketMQTemplate.send(MqTopic.SECKILL_ORDER, message);
         } catch (Exception e) {
             throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(), "发送消息失败");

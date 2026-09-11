@@ -1,9 +1,9 @@
 package com.helmsail.seckill.support.server.sku;
 
+import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.support.api.sku.SkuService;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
 import com.helmsail.seckill.support.api.sku.SkuPageQuery;
-import com.helmsail.seckill.support.api.sku.SkuPageResult;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 
@@ -39,7 +39,7 @@ public class SkuDubboServiceImpl implements SkuService {
     }
 
     @Override
-    public SkuPageResult page(SkuPageQuery query) {
+    public PageResult<SkuDTO> page(SkuPageQuery query) {
         return skuBizService.page(query);
     }
 }
