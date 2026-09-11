@@ -1,7 +1,5 @@
 package com.helmsail.seckill.support.api.sku;
 
-import com.helmsail.seckill.common.result.PageResult;
-
 import java.util.List;
 
 /**
@@ -20,6 +18,11 @@ public interface SkuService {
     List<SkuDTO> listBySpuNo(String spuNo);
 
     /**
+     * 根据名称模糊查询 SKU
+     */
+    List<SkuDTO> listBySkuName(String skuName);
+
+    /**
      * 扣减库存
      */
     void deductStock(String skuNo, int quantity);
@@ -28,9 +31,4 @@ public interface SkuService {
      * 增加库存
      */
     void addStock(String skuNo, int quantity);
-
-    /**
-     * 分页查询 SKU
-     */
-    PageResult<SkuDTO> page(SkuPageQuery query);
 }

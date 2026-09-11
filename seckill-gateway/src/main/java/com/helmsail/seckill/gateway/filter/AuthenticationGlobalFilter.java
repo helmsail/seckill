@@ -1,6 +1,7 @@
 package com.helmsail.seckill.gateway.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.helmsail.seckill.common.jwt.JwtClaims;
 import com.helmsail.seckill.common.jwt.JwtUtils;
 import com.helmsail.seckill.gateway.auth.GatewayAuth;
 import com.helmsail.seckill.gateway.result.GatewayError;
@@ -58,8 +59,8 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         String role;
         try {
             Claims claims = jwtUtils.parseToken(token);
-            userId = claims.get("userId", String.class);
-            role = claims.get("role", String.class);
+            userId = claims.get(JwtClaims.USER_ID, String.class);
+            role = claims.get(JwtClaims.ROLE, String.class);
         } catch (Exception e) {
             log.warn("JWT 解析失败: {}", e.getMessage());
             return unauthorized(exchange, GatewayError.UNAUTHORIZED, "认证令牌无效");

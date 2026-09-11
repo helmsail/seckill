@@ -1,16 +1,13 @@
 package com.helmsail.seckill.support.server.sku;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
-import com.helmsail.seckill.support.api.sku.SkuPageQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -28,7 +25,7 @@ public class SkuServiceImpl implements SkuBizService {
         Sku sku = skuMapper.selectOne(
                 new LambdaQueryWrapper<Sku>().eq(Sku::getSkuNo, skuNo));
         if (sku == null) {
-            throw new BizException(ResultEnum.NOT_FOUND);
+            throw new BizException(SupportResultEnum.SKU_NOT_FOUND);
         }
         return toDTO(sku);
     }
@@ -37,6 +34,16 @@ public class SkuServiceImpl implements SkuBizService {
     public List<SkuDTO> listBySpuNo(String spuNo) {
         List<Sku> list = skuMapper.selectList(
                 new LambdaQueryWrapper<Sku>().eq(Sku::getSpuNo, spuNo));
+        return list.stream().map(this::toDTO).toList();
+    }
+
+    @Override
+    public List<SkuDTO> listBySkuName(String skuName) {
+        if (!StringUtils.hasText(skuName)) {
+            return List.of();
+        }
+        List<Sku> list = skuMapper.selectList(
+                new LambdaQueryWrapper<Sku>().like(Sku::getSkuName, skuName));
         return list.stream().map(this::toDTO).toList();
     }
 
@@ -57,18 +64,6 @@ public class SkuServiceImpl implements SkuBizService {
             throw new BizException(ResultEnum.PARAM_ERROR);
         }
         skuMapper.addStock(skuNo, quantity);
-    }
-
-    @Override
-    public PageResult<SkuDTO> page(SkuPageQuery query) {
-        Page<Sku> page = new Page<>(query.getPageNum(), query.getPageSize());
-        LambdaQueryWrapper<Sku> wrapper = new LambdaQueryWrapper<>();
-        if (query.getSpuNo() != null) {
-            wrapper.eq(Sku::getSpuNo, query.getSpuNo());
-        }
-        skuMapper.selectPage(page, wrapper);
-        List<SkuDTO> list = page.getRecords().stream().map(this::toDTO).toList();
-        return new PageResult<>(list, page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     private SkuDTO toDTO(Sku sku) {

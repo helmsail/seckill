@@ -13,6 +13,9 @@ public class ProductPageQuery implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /** 商品名称（可选，模糊过滤） */
+    private String productName;
+
     /** 当前页码 */
     @Min(value = 1, message = "页码最小为1")
     private Integer pageNum = 1;

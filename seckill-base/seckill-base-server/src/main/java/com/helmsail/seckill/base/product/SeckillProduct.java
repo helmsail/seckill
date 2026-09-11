@@ -1,5 +1,6 @@
 package com.helmsail.seckill.base.product;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.helmsail.seckill.common.mybatis.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -11,6 +12,7 @@ import java.math.BigDecimal;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
+@TableName("sk_product")
 public class SeckillProduct extends BaseEntity {
 
     private Long id;

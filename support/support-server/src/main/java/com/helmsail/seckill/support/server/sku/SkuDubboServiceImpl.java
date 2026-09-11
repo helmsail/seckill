@@ -1,9 +1,7 @@
 package com.helmsail.seckill.support.server.sku;
 
-import com.helmsail.seckill.common.result.PageResult;
-import com.helmsail.seckill.support.api.sku.SkuService;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
-import com.helmsail.seckill.support.api.sku.SkuPageQuery;
+import com.helmsail.seckill.support.api.sku.SkuService;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 
@@ -29,6 +27,11 @@ public class SkuDubboServiceImpl implements SkuService {
     }
 
     @Override
+    public List<SkuDTO> listBySkuName(String skuName) {
+        return skuBizService.listBySkuName(skuName);
+    }
+
+    @Override
     public void deductStock(String skuNo, int quantity) {
         skuBizService.deductStock(skuNo, quantity);
     }
@@ -36,10 +39,5 @@ public class SkuDubboServiceImpl implements SkuService {
     @Override
     public void addStock(String skuNo, int quantity) {
         skuBizService.addStock(skuNo, quantity);
-    }
-
-    @Override
-    public PageResult<SkuDTO> page(SkuPageQuery query) {
-        return skuBizService.page(query);
     }
 }

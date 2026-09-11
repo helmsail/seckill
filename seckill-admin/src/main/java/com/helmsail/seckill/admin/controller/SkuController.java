@@ -1,10 +1,8 @@
 package com.helmsail.seckill.admin.controller;
 
 import com.helmsail.seckill.base.sku.*;
-import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
-import com.helmsail.seckill.support.api.sku.SkuPageQuery;
 import com.helmsail.seckill.support.api.sku.SkuService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,14 +26,6 @@ public class SkuController {
 
     @DubboReference
     private SeckillSkuService seckillSkuService;
-
-    /**
-     * 分页查询主域 SKU
-     */
-    @GetMapping("/list")
-    public Result<PageResult<SkuDTO>> page(SkuPageQuery query) {
-        return Result.success(skuService.page(query));
-    }
 
     /**
      * 查询单个主域 SKU

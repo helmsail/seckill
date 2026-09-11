@@ -2,6 +2,7 @@ package com.helmsail.seckill.support.server.user;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.helmsail.seckill.common.exception.BizException;
+import com.helmsail.seckill.common.jwt.JwtClaims;
 import com.helmsail.seckill.common.jwt.JwtUtils;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
@@ -41,9 +42,9 @@ public class UserServiceImpl implements UserBizService {
         dto.setUsername(user.getUsername());
         dto.setRole(user.getRole());
         String token = jwtUtils.generateToken(Map.of(
-                "userId", String.valueOf(user.getId()),
-                "username", user.getUsername(),
-                "role", String.valueOf(user.getRole())));
+                JwtClaims.USER_ID, String.valueOf(user.getId()),
+                JwtClaims.USERNAME, user.getUsername(),
+                JwtClaims.ROLE, String.valueOf(user.getRole())));
         return new LoginResponse(token, dto);
     }
 }

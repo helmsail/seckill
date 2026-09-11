@@ -1,5 +1,6 @@
 package com.helmsail.seckill.support.server.order;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.helmsail.seckill.common.mybatis.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -12,6 +13,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
+@TableName("t_order")
 public class Order extends BaseEntity {
 
     private Long id;
