@@ -88,11 +88,14 @@ public class ActivityController {
     }
 
     /**
-     * 查询所有活动
+     * 查询活动列表（status 为空时全量，否则按状态过滤）
      */
     @GetMapping("/list")
-    public Result<List<ActivityDTO>> listAll() {
-        return Result.success(activityService.listAll());
+    public Result<List<ActivityDTO>> list(@RequestParam(required = false) ActivityStatus status) {
+        if (status == null) {
+            return Result.success(activityService.listAll());
+        }
+        return Result.success(activityService.listByStatus(status));
     }
 
     /**

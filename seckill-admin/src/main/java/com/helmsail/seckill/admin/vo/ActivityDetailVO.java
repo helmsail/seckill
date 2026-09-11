@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -46,6 +47,6 @@ public class ActivityDetailVO implements Serializable {
         private String spuNo;
         private String spuName;
         private String discountType;
-        private java.math.BigDecimal discountParameter;
+        private BigDecimal discountParameter;
     }
 }

@@ -16,7 +16,5 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   consumer:
     check: false
-
-jwt:
-  secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION}
+    # 写编排（循环划拨+批量落库）用默认 1s 超时偏短，放宽以降低假失败概率
+    timeout: 3000
