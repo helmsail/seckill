@@ -32,4 +32,13 @@ public enum SeckillOrderStatus {
         if (from == PENDING && to == CLOSED) return true;
         return false;
     }
+
+    public static SeckillOrderStatus byCode(int code) {
+        for (SeckillOrderStatus status : values()) {
+            if (status.code == code) {
+                return status;
+            }
+        }
+        throw new IllegalArgumentException("未知订单状态: " + code);
+    }
 }

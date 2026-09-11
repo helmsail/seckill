@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.helmsail.seckill.common.mybatis.BaseEntity;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ import java.time.LocalDateTime;
  * 审计字段继承自 BaseEntity；主键由 ShardingSphere 雪花算法生成。
  */
 @Data
+@EqualsAndHashCode(callSuper = true)
 @TableName("sk_order")
 public class SeckillOrder extends BaseEntity {
 
@@ -28,5 +30,5 @@ public class SeckillOrder extends BaseEntity {
     private BigDecimal payAmount;
     private Integer orderStatus;
     private LocalDateTime paidTime;
-    private String remark;
+    private String tradeNo;
 }

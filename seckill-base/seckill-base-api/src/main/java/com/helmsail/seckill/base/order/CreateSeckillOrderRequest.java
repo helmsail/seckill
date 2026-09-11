@@ -21,7 +21,4 @@ public class CreateSeckillOrderRequest implements Serializable {
 
     /** 实付金额 */
     private BigDecimal payAmount;
-
-    /** 备注 */
-    private String remark;
 }

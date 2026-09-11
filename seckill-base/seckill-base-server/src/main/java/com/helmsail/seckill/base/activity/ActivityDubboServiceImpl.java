@@ -7,8 +7,10 @@ import java.util.List;
 
 /**
  * 活动 Dubbo 服务实现
+ *
+ * retries = 0：本服务含非幂等写操作（创建/删除/状态流转），自动重试会产生重复副作用
  */
-@DubboService
+@DubboService(retries = 0)
 @RequiredArgsConstructor
 public class ActivityDubboServiceImpl implements ActivityService {
 

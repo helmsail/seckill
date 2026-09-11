@@ -20,11 +20,12 @@ public class PayController {
     }
 
     /**
-     * 支付回调
+     * 支付回调（tradeNo 为第三方支付流水号，Mock 渠道可不传）
      */
     @PostMapping("/callback")
-    public Result<Void> callback(@RequestParam String orderNo) {
-        payService.payCallback(orderNo);
+    public Result<Void> callback(@RequestParam String orderNo,
+                                 @RequestParam(required = false) String tradeNo) {
+        payService.payCallback(orderNo, tradeNo);
         return Result.success();
     }
 }

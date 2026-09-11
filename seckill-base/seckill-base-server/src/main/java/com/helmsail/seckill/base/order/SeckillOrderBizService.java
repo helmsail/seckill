@@ -13,7 +13,7 @@ public interface SeckillOrderBizService {
 
     PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query);
 
-    void paySuccess(String orderNo);
+    void paySuccess(String orderNo, String tradeNo);
 
     void closeOrder(String orderNo);
 }

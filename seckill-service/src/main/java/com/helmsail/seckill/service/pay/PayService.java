@@ -43,7 +43,7 @@ public class PayService {
 
         // 3. 调用支付渠道预创建
         PayRequest payRequest = new PayRequest();
-        payRequest.setSubject(order.getRemark());
+        payRequest.setSubject("秒杀活动订单");
         payRequest.setOutTradeNo(order.getOrderNo());
         payRequest.setTotalAmount(String.valueOf(order.getPayAmount()));
         String qrCode = supportPayService.preCreate(PayChannelType.MOCK, payRequest);
@@ -54,12 +54,12 @@ public class PayService {
         return qrCode;
     }
 
-    public void payCallback(String orderNo) {
+    public void payCallback(String orderNo, String tradeNo) {
         String lockKey = "seckill:pay:lock:" + orderNo;
         RLock lock = redissonClient.getLock(lockKey);
         try {
             lock.lock(10, TimeUnit.SECONDS);
-            seckillOrderService.paySuccess(orderNo);
+            seckillOrderService.paySuccess(orderNo, tradeNo);
             // 清除二维码缓存
             redisService.delete(String.format(QR_CODE_CACHE_KEY, orderNo));
         } finally {

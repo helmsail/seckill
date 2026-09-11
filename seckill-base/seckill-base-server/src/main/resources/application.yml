@@ -10,8 +10,6 @@ spring:
   datasource:
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
     url: jdbc:shardingsphere:classpath:shardingsphere-sharding.yaml?placeholder-type=environment
-    username: ${MYSQL_USERNAME}
-    password: ${MYSQL_PASSWORD}
 
 mybatis-plus:
   global-config:
@@ -30,7 +28,3 @@ dubbo:
   protocol:
     name: dubbo
     port: 28081
-
-jwt:
-  secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION}

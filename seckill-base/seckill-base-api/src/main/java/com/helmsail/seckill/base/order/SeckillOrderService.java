@@ -24,8 +24,11 @@ public interface SeckillOrderService {
 
     /**
      * 订单支付成功
+     *
+     * @param orderNo 订单号
+     * @param tradeNo 第三方支付流水号
      */
-    void paySuccess(String orderNo);
+    void paySuccess(String orderNo, String tradeNo);
 
     /**
      * 关闭订单

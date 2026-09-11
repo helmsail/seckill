@@ -9,8 +9,10 @@ import java.util.List;
 
 /**
  * SKU Dubbo 服务实现
+ *
+ * retries = 0：本服务含库存扣减/归还（累加语义、非幂等），自动重试会造成库存错账
  */
-@DubboService
+@DubboService(retries = 0)
 @RequiredArgsConstructor
 public class SkuDubboServiceImpl implements SkuService {
 

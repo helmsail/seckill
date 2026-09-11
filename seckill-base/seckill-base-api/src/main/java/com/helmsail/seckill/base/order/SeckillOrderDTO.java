@@ -21,5 +21,5 @@ public class SeckillOrderDTO implements Serializable {
     private BigDecimal payAmount;
     private SeckillOrderStatus orderStatus;
     private LocalDateTime paidTime;
-    private String remark;
+    private String tradeNo;
 }

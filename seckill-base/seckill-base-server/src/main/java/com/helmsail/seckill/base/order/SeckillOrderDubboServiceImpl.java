@@ -6,8 +6,10 @@ import org.apache.dubbo.config.annotation.DubboService;
 
 /**
  * 秒杀订单 Dubbo 服务实现
+ *
+ * retries = 0：本服务含非幂等写操作（创建订单），自动重试会造成重复下单
  */
-@DubboService
+@DubboService(retries = 0)
 @RequiredArgsConstructor
 public class SeckillOrderDubboServiceImpl implements SeckillOrderService {
 
@@ -29,8 +31,8 @@ public class SeckillOrderDubboServiceImpl implements SeckillOrderService {
     }
 
     @Override
-    public void paySuccess(String orderNo) {
-        seckillOrderBizService.paySuccess(orderNo);
+    public void paySuccess(String orderNo, String tradeNo) {
+        seckillOrderBizService.paySuccess(orderNo, tradeNo);
     }
 
     @Override

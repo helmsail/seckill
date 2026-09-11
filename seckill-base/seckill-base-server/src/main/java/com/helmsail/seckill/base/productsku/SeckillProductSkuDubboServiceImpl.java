@@ -7,8 +7,10 @@ import java.util.List;
 
 /**
  * 活动商品SKU Dubbo 服务实现
+ *
+ * retries = 0：本服务含非幂等写操作（批量增删/上下架），自动重试会产生重复副作用
  */
-@DubboService
+@DubboService(retries = 0)
 @RequiredArgsConstructor
 public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuService {
 

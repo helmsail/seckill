@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 活动商品SKU服务实现
@@ -88,13 +89,20 @@ public class SeckillProductSkuServiceImpl implements SeckillProductSkuBizService
         if (skuNos == null || skuNos.isEmpty()) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "操作列表不能为空");
         }
-        int rows = seckillProductSkuMapper.update(null, new LambdaUpdateWrapper<SeckillProductSku>()
+        Set<String> distinctSkuNos = new HashSet<>(skuNos);
+        List<SeckillProductSku> existing = seckillProductSkuMapper.selectList(new LambdaQueryWrapper<SeckillProductSku>()
                 .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
-                .in(SeckillProductSku::getSkuNo, skuNos)
-                .set(SeckillProductSku::getShelfStatus, request.isOnShelf() ? SHELF_ON : SHELF_OFF));
-        if (rows == 0) {
-            throw new BizException(SeckillResultEnum.SKU_NOT_FOUND);
+                .in(SeckillProductSku::getSkuNo, distinctSkuNos));
+        Set<String> existingSkuNos = existing.stream().map(SeckillProductSku::getSkuNo).collect(Collectors.toSet());
+        for (String skuNo : distinctSkuNos) {
+            if (!existingSkuNos.contains(skuNo)) {
+                throw new BizException(SeckillResultEnum.SKU_NOT_FOUND.getCode(), "SKU 不存在: " + skuNo);
+            }
         }
+        seckillProductSkuMapper.update(null, new LambdaUpdateWrapper<SeckillProductSku>()
+                .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
+                .in(SeckillProductSku::getSkuNo, distinctSkuNos)
+                .set(SeckillProductSku::getShelfStatus, request.isOnShelf() ? SHELF_ON : SHELF_OFF));
     }
 
     @Override

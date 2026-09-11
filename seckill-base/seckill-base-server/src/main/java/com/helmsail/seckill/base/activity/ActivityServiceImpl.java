@@ -3,6 +3,8 @@ package com.helmsail.seckill.base.activity;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
+import com.helmsail.seckill.base.productsku.SeckillProductSku;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuMapper;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
@@ -21,7 +23,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ActivityServiceImpl implements ActivityBizService {
 
+    /** 限购上限（sk_activity.purchase_limit 列为 TINYINT） */
+    private static final int PURCHASE_LIMIT_MAX = 127;
+
     private final ActivityMapper activityMapper;
+    private final SeckillProductSkuMapper seckillProductSkuMapper;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
@@ -106,6 +112,11 @@ public class ActivityServiceImpl implements ActivityBizService {
             throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
                     "仅待开始状态可删除，当前状态: " + current.getDesc());
         }
+        Long skuCount = seckillProductSkuMapper.selectCount(
+                new LambdaQueryWrapper<SeckillProductSku>().eq(SeckillProductSku::getActivityNo, activityNo));
+        if (skuCount != null && skuCount > 0) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_HAS_SKU);
+        }
         int rows = activityMapper.delete(new LambdaQueryWrapper<Activity>()
                 .eq(Activity::getActivityNo, activityNo)
                 .eq(Activity::getActivityStatus, ActivityStatus.PENDING.getCode()));
@@ -167,8 +178,10 @@ public class ActivityServiceImpl implements ActivityBizService {
         if (request.getWeekBitmap() != null && !WeekBitmap.isValid(request.getWeekBitmap())) {
             throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "周位图必须在 1~127 之间");
         }
-        if (request.getPurchaseLimit() != null && request.getPurchaseLimit() < 0) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "限购数量不能为负数");
+        if (request.getPurchaseLimit() != null
+                && (request.getPurchaseLimit() < 0 || request.getPurchaseLimit() > PURCHASE_LIMIT_MAX)) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(),
+                    "限购数量必须在 0~" + PURCHASE_LIMIT_MAX + " 之间");
         }
     }
 

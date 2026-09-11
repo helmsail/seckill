@@ -14,6 +14,7 @@ public enum SeckillResultEnum implements IResultCode {
     ACTIVITY_STATUS_ERROR("activity_status_error", "活动状态不允许此操作"),
     ACTIVITY_PARAM_ERROR("activity_param_error", "活动参数不合法"),
     ACTIVITY_NOT_EFFECTIVE("activity_not_effective", "活动不在生效时段"),
+    ACTIVITY_HAS_SKU("activity_has_sku", "活动下存在商品，不可删除"),
 
     // ========== 秒杀商品 / SKU ==========
     SKU_NOT_FOUND("sku_not_found", "秒杀 SKU 不存在"),
@@ -23,7 +24,10 @@ public enum SeckillResultEnum implements IResultCode {
 
     // ========== 秒杀 ==========
     RATE_LIMITED("rate_limited", "请求过于频繁"),
-    BLACKLISTED("blacklisted", "已被限制参与秒杀");
+    BLACKLISTED("blacklisted", "已被限制参与秒杀"),
+
+    // ========== 订单 ==========
+    ORDER_NOT_FOUND("order_not_found", "订单不存在");
 
     private final String code;
     private final String message;
