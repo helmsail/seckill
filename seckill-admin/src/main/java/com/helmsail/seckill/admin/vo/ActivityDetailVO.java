@@ -1,7 +1,7 @@
 package com.helmsail.seckill.admin.vo;
 
 import com.helmsail.seckill.base.activity.ActivityDTO;
-import com.helmsail.seckill.base.sku.SeckillSkuDTO;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -9,7 +9,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 活动详情 VO（层次化输出）
+ * 活动详情 VO（层次化输出：活动 → SPU 分组 → SKU 行）
  */
 @Data
 @AllArgsConstructor
@@ -33,7 +33,7 @@ public class ActivityDetailVO implements Serializable {
         private ProductInfo product;
 
         /** SKU 列表 */
-        private List<SeckillSkuDTO> skus;
+        private List<SeckillProductSkuDTO> skus;
     }
 
     @Data

@@ -6,11 +6,9 @@ import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.activity.WeekBitmap;
-import com.helmsail.seckill.base.product.SeckillProductDTO;
-import com.helmsail.seckill.base.product.SeckillProductService;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
 import com.helmsail.seckill.base.redis.SeckillCacheKey;
-import com.helmsail.seckill.base.sku.SeckillSkuDTO;
-import com.helmsail.seckill.base.sku.SeckillSkuService;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.service.cache.CaffeineCache;
 import jakarta.annotation.PostConstruct;
@@ -21,28 +19,30 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ActivityQueryService {
 
+    private static final String SISMEMBER_LUA = "return redis.call('sismember', KEYS[1], ARGV[1])";
+
     @DubboReference
     private ActivityService activityService;
 
     @DubboReference
-    private SeckillProductService seckillProductService;
-
-    @DubboReference
-    private SeckillSkuService seckillSkuService;
+    private SeckillProductSkuService seckillProductSkuService;
 
     private final RedisService redisService;
     private final ObjectMapper objectMapper;
 
     private CaffeineCache<List<ActivityDTO>> activityListCache;
     private CaffeineCache<ActivityDTO> activityInfoCache;
-    private CaffeineCache<List<Map<String, Object>>> activityProductCache;
+    private CaffeineCache<List<SeckillProductSkuDTO>> activityProductCache;
 
     @PostConstruct
     public void init() {
@@ -73,21 +73,13 @@ public class ActivityQueryService {
         return activityService.getByActivityNo(key);
     }
 
-    private List<Map<String, Object>> loadProductList(String key) {
-        return parse(redisService.get(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, key)), new TypeReference<>() {});
+    private List<SeckillProductSkuDTO> loadProductList(String key) {
+        return parse(redisService.get(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
+                new TypeReference<>() {});
     }
 
-    private List<Map<String, Object>> fallbackProductList(String activityNo) {
-        List<SeckillProductDTO> products = seckillProductService.listByActivityNo(activityNo);
-        List<Map<String, Object>> productList = new ArrayList<>();
-        for (SeckillProductDTO product : products) {
-            List<SeckillSkuDTO> skus = seckillSkuService.listBySkProductId(String.valueOf(product.getId()));
-            Map<String, Object> map = new HashMap<>();
-            map.put("product", product);
-            map.put("skus", skus);
-            productList.add(map);
-        }
-        return productList;
+    private List<SeckillProductSkuDTO> fallbackProductList(String activityNo) {
+        return seckillProductSkuService.listByActivityNo(activityNo);
     }
 
     private <T> T parse(String json, Class<T> clazz) {
@@ -118,6 +110,10 @@ public class ActivityQueryService {
         return activityInfoCache.get(activityNo);
     }
 
+    public List<SeckillProductSkuDTO> getProductListByActivityNo(String activityNo) {
+        return activityProductCache.get(activityNo);
+    }
+
     /**
      * 抢购生效判定：状态为进行中 + 日期范围 + 当天时段 + 周位图
      */
@@ -137,12 +133,19 @@ public class ActivityQueryService {
         return WeekBitmap.isActive(activity.getWeekBitmap(), today.getDayOfWeek());
     }
 
-    public List<Map<String, Object>> getProductListByActivityNo(String activityNo) {
-        return activityProductCache.get(activityNo);
+    /**
+     * 在售判定（Redis 名单，仅作前置过滤）
+     *
+     * 正确性以 processor 的 DB 权威状态终判为准；名单滞后最多导致少量请求白跑。
+     */
+    public boolean isSkuOnShelf(String activityNo, String skuNo) {
+        String key = String.format(SeckillCacheKey.KEY_ACTIVITY_SHELF, activityNo);
+        Long result = redisService.executeLua(SISMEMBER_LUA, Collections.singletonList(key), skuNo);
+        return result != null && result > 0;
     }
 
-    public Integer getSkuStock(String skuNo) {
-        String stockKey = String.format(SeckillCacheKey.KEY_SKU_STOCK, skuNo);
+    public Integer getSkuStock(String activityNo, String skuNo) {
+        String stockKey = String.format(SeckillCacheKey.KEY_SKU_STOCK, activityNo, skuNo);
         String stock = redisService.get(stockKey);
         return stock != null ? Integer.parseInt(stock) : 0;
     }

@@ -16,8 +16,9 @@ public enum SeckillResultEnum implements IResultCode {
     ACTIVITY_NOT_EFFECTIVE("activity_not_effective", "活动不在生效时段"),
 
     // ========== 秒杀商品 / SKU ==========
-    PRODUCT_NOT_FOUND("product_not_found", "秒杀商品不存在"),
     SKU_NOT_FOUND("sku_not_found", "秒杀 SKU 不存在"),
+    SKU_ALREADY_EXISTS("sku_already_exists", "SKU 已在活动中"),
+    SKU_OFF_SHELF("sku_off_shelf", "秒杀商品已下架"),
     STOCK_INSUFFICIENT("stock_insufficient", "库存不足"),
 
     // ========== 秒杀 ==========

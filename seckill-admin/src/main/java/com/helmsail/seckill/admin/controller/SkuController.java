@@ -1,6 +1,11 @@
 package com.helmsail.seckill.admin.controller;
 
-import com.helmsail.seckill.base.sku.*;
+import com.helmsail.seckill.base.productsku.AddProductSkuRequest;
+import com.helmsail.seckill.base.productsku.RemoveProductSkuRequest;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
+import com.helmsail.seckill.base.productsku.ShelfProductSkuRequest;
+import com.helmsail.seckill.base.productsku.StockRestoreItem;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
 import com.helmsail.seckill.support.api.sku.SkuService;
@@ -14,6 +19,8 @@ import java.util.List;
 
 /**
  * SKU 管理 Controller
+ *
+ * 活动商品SKU的编排入口：主域库存划拨/归还由本层编排（先划拨后落库，失败补偿）。
  */
 @Slf4j
 @RestController
@@ -25,7 +32,7 @@ public class SkuController {
     private SkuService skuService;
 
     @DubboReference
-    private SeckillSkuService seckillSkuService;
+    private SeckillProductSkuService seckillProductSkuService;
 
     /**
      * 查询单个主域 SKU
@@ -36,53 +43,68 @@ public class SkuController {
     }
 
     /**
-     * 给秒杀商品添加 SKU
+     * 批量添加到活动
      *
-     * 内部自动：主域扣减库存 → 秒杀域添加 SKU
+     * 编排：逐条划拨主域库存 → 秒杀域批量落库；任一步失败补偿已划拨部分
      */
     @PostMapping("/seckill")
-    public Result<Void> addSeckillSku(@Valid @RequestBody AddSkuRequest request) {
-        // 1. 从主域扣减库存
-        skuService.deductStock(request.getSkuNo(), request.getActivityStock());
-        // 2. 标记已扣减，添加到秒杀域
-        request.setStockDeducted(true);
+    public Result<Void> batchAdd(@Valid @RequestBody AddProductSkuRequest request) {
+        List<AddProductSkuRequest.Item> items = request.getItems();
+        int deducted = 0;
         try {
-            seckillSkuService.addSku(request);
+            for (AddProductSkuRequest.Item item : items) {
+                skuService.deductStock(item.getSkuNo(), item.getActivityStock());
+                deducted++;
+            }
+            seckillProductSkuService.batchAdd(request);
         } catch (Exception e) {
-            // 补偿：恢复主域库存
-            log.error("添加秒杀SKU失败，补偿恢复库存: skuNo={}", request.getSkuNo(), e);
-            skuService.addStock(request.getSkuNo(), request.getActivityStock());
-            throw e;
-        }
-        return Result.success();
-    }
-
-    @DeleteMapping("/seckill")
-    public Result<Void> removeSeckillSku(@Valid @RequestBody RemoveSkuRequest request) {
-        // 1. 从秒杀域删除 SKU
-        RemoveSkuResponse response = seckillSkuService.removeSku(request);
-        // 2. 将库存归还主域
-        try {
-            skuService.addStock(response.getSkuNo(), response.getStockToRestore());
-        } catch (Exception e) {
-            // 补偿：恢复秒杀域 SKU
-            log.error("归还库存失败，补偿恢复秒杀SKU: skuNo={}", response.getSkuNo(), e);
-            AddSkuRequest addRequest = new AddSkuRequest();
-            addRequest.setSkProductId(request.getSkProductId());
-            addRequest.setSkuNo(response.getSkuNo());
-            addRequest.setActivityStock(response.getStockToRestore());
-            addRequest.setStockDeducted(true);
-            seckillSkuService.addSku(addRequest);
+            log.error("添加活动商品失败，补偿归还库存: activityNo={}", request.getActivityNo(), e);
+            for (int i = 0; i < deducted; i++) {
+                AddProductSkuRequest.Item item = items.get(i);
+                try {
+                    skuService.addStock(item.getSkuNo(), item.getActivityStock());
+                } catch (Exception ex) {
+                    log.error("补偿归还库存失败: skuNo={}", item.getSkuNo(), ex);
+                }
+            }
             throw e;
         }
         return Result.success();
     }
 
     /**
-     * 查询秒杀域某个商品的 SKU 列表
+     * 批量删除（物理删除，仅待开始状态）
+     *
+     * 编排：秒杀域删除并取回需归还清单 → 归还主域（失败记录待人工/对账兜底）
      */
-    @GetMapping("/seckill/{skProductId}")
-    public Result<List<SeckillSkuDTO>> listSeckillSku(@PathVariable String skProductId) {
-        return Result.success(seckillSkuService.listBySkProductId(skProductId));
+    @DeleteMapping("/seckill")
+    public Result<Void> batchRemove(@Valid @RequestBody RemoveProductSkuRequest request) {
+        List<StockRestoreItem> restoreItems = seckillProductSkuService.batchRemove(request);
+        for (StockRestoreItem item : restoreItems) {
+            try {
+                skuService.addStock(item.getSkuNo(), item.getStockToRestore());
+            } catch (Exception e) {
+                log.error("归还主域库存失败，需人工核对: skuNo={}, stock={}",
+                        item.getSkuNo(), item.getStockToRestore(), e);
+            }
+        }
+        return Result.success();
+    }
+
+    /**
+     * 批量上架/下架（活动非终态可用）
+     */
+    @PutMapping("/seckill/shelf")
+    public Result<Void> batchShelf(@Valid @RequestBody ShelfProductSkuRequest request) {
+        seckillProductSkuService.batchShelf(request);
+        return Result.success();
+    }
+
+    /**
+     * 查询活动下的商品SKU列表
+     */
+    @GetMapping("/seckill")
+    public Result<List<SeckillProductSkuDTO>> listByActivityNo(@RequestParam String activityNo) {
+        return Result.success(seckillProductSkuService.listByActivityNo(activityNo));
     }
 }

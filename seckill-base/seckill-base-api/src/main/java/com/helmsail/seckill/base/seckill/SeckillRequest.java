@@ -13,9 +13,6 @@ public class SeckillRequest {
     @NotBlank(message = "活动编号不能为空")
     private String activityNo;
 
-    @NotBlank(message = "秒杀商品ID不能为空")
-    private String skProductId;
-
     @NotBlank(message = "SKU编号不能为空")
     private String skuNo;
 

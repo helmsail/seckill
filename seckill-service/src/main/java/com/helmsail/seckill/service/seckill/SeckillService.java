@@ -56,12 +56,16 @@ public class SeckillService {
             throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
         }
 
+        if (!activityQueryService.isSkuOnShelf(activityNo, skuNo)) {
+            throw new BizException(SeckillResultEnum.SKU_OFF_SHELF);
+        }
+
         if (!blacklistCheckService.check(userId)) {
             throw new BizException(SeckillResultEnum.BLACKLISTED);
         }
 
         if (config.getCheck().isStock()) {
-            Integer stock = activityQueryService.getSkuStock(skuNo);
+            Integer stock = activityQueryService.getSkuStock(activityNo, skuNo);
             if (stock == null || stock < request.getQuantity()) {
                 throw new BizException(SeckillResultEnum.STOCK_INSUFFICIENT);
             }

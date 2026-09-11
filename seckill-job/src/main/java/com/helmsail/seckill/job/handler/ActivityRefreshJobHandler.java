@@ -1,12 +1,12 @@
 package com.helmsail.seckill.job.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.helmsail.seckill.base.activity.*;
-import com.helmsail.seckill.base.product.SeckillProductDTO;
-import com.helmsail.seckill.base.product.SeckillProductService;
+import com.helmsail.seckill.base.activity.ActivityDTO;
+import com.helmsail.seckill.base.activity.ActivityService;
+import com.helmsail.seckill.base.activity.ActivityStatus;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
 import com.helmsail.seckill.base.redis.SeckillCacheKey;
-import com.helmsail.seckill.base.sku.SeckillSkuDTO;
-import com.helmsail.seckill.base.sku.SeckillSkuService;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
@@ -14,8 +14,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.List;
 
+/**
+ * 活动刷新任务
+ *
+ * 刷新进行中活动的展示缓存（活动信息 + 商品SKU列表）。
+ * 不触碰库存计数 key（运行期实时值不可被刷新覆盖）。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -25,10 +31,7 @@ public class ActivityRefreshJobHandler {
     private ActivityService activityService;
 
     @DubboReference
-    private SeckillProductService seckillProductService;
-
-    @DubboReference
-    private SeckillSkuService seckillSkuService;
+    private SeckillProductSkuService seckillProductSkuService;
 
     private final RedisService redisService;
     private final ObjectMapper objectMapper;
@@ -56,33 +59,13 @@ public class ActivityRefreshJobHandler {
         String activityNo = activity.getActivityNo();
         log.info("开始刷新活动: activityNo={}", activityNo);
 
-        refreshActivityInfo(activityNo, activity);
-        List<SeckillProductDTO> products = seckillProductService.listByActivityNo(activityNo);
-        List<Map<String, Object>> productList = aggregateProductsWithSku(products);
-        refreshActivityProductList(activityNo, productList);
+        List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
 
-        log.info("活动刷新完成: activityNo={}, 商品数={}", activityNo, productList.size());
-    }
+        redisService.hSet(SeckillCacheKey.KEY_ACTIVITY_INFO, activityNo,
+                objectMapper.writeValueAsString(activity));
+        redisService.set(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
+                objectMapper.writeValueAsString(rows));
 
-    private void refreshActivityInfo(String activityNo, ActivityDTO activity) throws Exception {
-        String json = objectMapper.writeValueAsString(activity);
-        redisService.hSet(SeckillCacheKey.KEY_ACTIVITY_INFO, activityNo, json);
-    }
-
-    private List<Map<String, Object>> aggregateProductsWithSku(List<SeckillProductDTO> products) {
-        List<Map<String, Object>> productList = new ArrayList<>();
-        for (SeckillProductDTO product : products) {
-            List<SeckillSkuDTO> skus = seckillSkuService.listBySkProductId(String.valueOf(product.getId()));
-            Map<String, Object> map = new HashMap<>();
-            map.put("product", product);
-            map.put("skus", skus);
-            productList.add(map);
-        }
-        return productList;
-    }
-
-    private void refreshActivityProductList(String activityNo, List<Map<String, Object>> productList) throws Exception {
-        String json = objectMapper.writeValueAsString(productList);
-        redisService.set(String.format(SeckillCacheKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo), json);
+        log.info("活动刷新完成: activityNo={}, SKU数={}", activityNo, rows.size());
     }
 }
