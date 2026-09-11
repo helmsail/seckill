@@ -20,13 +20,38 @@ public class ActivityDubboServiceImpl implements ActivityService {
     }
 
     @Override
-    public ActivityDTO getByActivityNo(String activityNo) {
-        return activityBizService.getByActivityNo(activityNo);
+    public void activate(String activityNo) {
+        activityBizService.activate(activityNo);
     }
 
     @Override
-    public void updateStatus(String activityNo, ActivityStatus targetStatus) {
-        activityBizService.updateStatus(activityNo, targetStatus);
+    public void pause(String activityNo) {
+        activityBizService.pause(activityNo);
+    }
+
+    @Override
+    public void resume(String activityNo) {
+        activityBizService.resume(activityNo);
+    }
+
+    @Override
+    public void close(String activityNo) {
+        activityBizService.close(activityNo);
+    }
+
+    @Override
+    public void update(String activityNo, ActivityRequest request) {
+        activityBizService.update(activityNo, request);
+    }
+
+    @Override
+    public void delete(String activityNo) {
+        activityBizService.delete(activityNo);
+    }
+
+    @Override
+    public ActivityDTO getByActivityNo(String activityNo) {
+        return activityBizService.getByActivityNo(activityNo);
     }
 
     @Override
@@ -35,12 +60,7 @@ public class ActivityDubboServiceImpl implements ActivityService {
     }
 
     @Override
-    public void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request) {
-        activityBizService.update(activityNo, requiredStatus, request);
-    }
-
-    @Override
-    public void delete(String activityNo, ActivityStatus requiredStatus) {
-        activityBizService.delete(activityNo, requiredStatus);
+    public List<ActivityDTO> listAll() {
+        return activityBizService.listAll();
     }
 }

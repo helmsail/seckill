@@ -4,7 +4,7 @@ import lombok.Data;
 
 import jakarta.validation.constraints.NotBlank;
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
@@ -19,23 +19,20 @@ public class ActivityRequest implements Serializable {
     @NotBlank(message = "活动名称不能为空")
     private String activityName;
 
-    /** 开始时间 */
-    private LocalDateTime startTime;
+    /** 开始日期 */
+    private LocalDate startDate;
 
-    /** 结束时间 */
-    private LocalDateTime endTime;
+    /** 结束日期 */
+    private LocalDate endDate;
 
-    /** 生效类型 */
-    private EffectiveType effectiveType;
+    /** 当天开始时间（禁止跨天，须早于当天结束时间） */
+    private LocalTime startTime;
 
-    /** 生效日期（如 1,3,5） */
-    private String effectiveDays;
+    /** 当天结束时间 */
+    private LocalTime endTime;
 
-    /** 每日生效开始时间 */
-    private LocalTime effectiveStart;
-
-    /** 每日生效结束时间 */
-    private LocalTime effectiveEnd;
+    /** 周位图：bit0=周一…bit6=周日（127=每天）；空则默认每天 */
+    private Integer weekBitmap;
 
     /** 每人限购数量（0=不限购） */
     private Integer purchaseLimit;

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
+import com.helmsail.seckill.base.activity.WeekBitmap;
 import com.helmsail.seckill.base.product.SeckillProductDTO;
 import com.helmsail.seckill.base.product.SeckillProductService;
 import com.helmsail.seckill.base.redis.SeckillCacheKey;
@@ -18,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.*;
 
 @Slf4j
@@ -113,6 +116,25 @@ public class ActivityQueryService {
 
     public ActivityDTO getActivityByNo(String activityNo) {
         return activityInfoCache.get(activityNo);
+    }
+
+    /**
+     * 抢购生效判定：状态为进行中 + 日期范围 + 当天时段 + 周位图
+     */
+    public boolean isInEffectiveWindow(String activityNo) {
+        ActivityDTO activity = getActivityByNo(activityNo);
+        if (activity == null || activity.getActivityStatus() != ActivityStatus.ACTIVE) {
+            return false;
+        }
+        LocalDate today = LocalDate.now();
+        if (today.isBefore(activity.getStartDate()) || today.isAfter(activity.getEndDate())) {
+            return false;
+        }
+        LocalTime now = LocalTime.now();
+        if (now.isBefore(activity.getStartTime()) || now.isAfter(activity.getEndTime())) {
+            return false;
+        }
+        return WeekBitmap.isActive(activity.getWeekBitmap(), today.getDayOfWeek());
     }
 
     public List<Map<String, Object>> getProductListByActivityNo(String activityNo) {

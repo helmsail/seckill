@@ -5,7 +5,7 @@ import com.helmsail.seckill.common.mybatis.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
@@ -19,12 +19,11 @@ public class Activity extends BaseEntity {
     private Long id;
     private String activityNo;
     private String activityName;
-    private LocalDateTime startTime;
-    private LocalDateTime endTime;
-    private Integer effectiveType;
-    private String effectiveDays;
-    private LocalTime effectiveStart;
-    private LocalTime effectiveEnd;
+    private LocalDate startDate;
+    private LocalDate endDate;
+    private LocalTime startTime;
+    private LocalTime endTime;
+    private Integer weekBitmap;
     private Integer purchaseLimit;
     private Integer activityStatus;
     private String remark;

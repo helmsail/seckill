@@ -61,7 +61,8 @@ public class ActivityWarmUpJobHandler {
     }
 
     private boolean isInWarmUpWindow(ActivityDTO activity, LocalDateTime now) {
-        long secondsUntilStart = ChronoUnit.SECONDS.between(now, activity.getStartTime());
+        LocalDateTime activateMoment = LocalDateTime.of(activity.getStartDate(), activity.getStartTime());
+        long secondsUntilStart = ChronoUnit.SECONDS.between(now, activateMoment);
         return secondsUntilStart >= 0 && secondsUntilStart <= WARM_UP_WINDOW_SECONDS;
     }
 

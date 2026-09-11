@@ -56,7 +56,7 @@ public class BlacklistCheckService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime activityStart = activity.getStartTime();
+        LocalDateTime activityStart = LocalDateTime.of(activity.getStartDate(), activity.getStartTime());
         int windowBefore = config.getBlacklist().getWindowBeforeSeconds();
         int windowAfter = config.getBlacklist().getWindowAfterSeconds();
 

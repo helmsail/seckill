@@ -43,7 +43,7 @@ public class ActivityController {
      */
     @DeleteMapping("/{activityNo}")
     public Result<Void> delete(@PathVariable String activityNo) {
-        activityService.delete(activityNo, ActivityStatus.PENDING);
+        activityService.delete(activityNo);
         return Result.success();
     }
 
@@ -52,7 +52,7 @@ public class ActivityController {
      */
     @PutMapping("/{activityNo}")
     public Result<Void> update(@PathVariable String activityNo, @Valid @RequestBody ActivityRequest request) {
-        activityService.update(activityNo, ActivityStatus.PENDING, request);
+        activityService.update(activityNo, request);
         return Result.success();
     }
 
@@ -93,11 +93,7 @@ public class ActivityController {
      */
     @GetMapping("/list")
     public Result<List<ActivityDTO>> listAll() {
-        List<ActivityDTO> all = new ArrayList<>();
-        for (ActivityStatus status : ActivityStatus.values()) {
-            all.addAll(activityService.listByStatus(status));
-        }
-        return Result.success(all);
+        return Result.success(activityService.listAll());
     }
 
     /**
@@ -105,7 +101,7 @@ public class ActivityController {
      */
     @PutMapping("/{activityNo}/pause")
     public Result<Void> pause(@PathVariable String activityNo) {
-        activityService.updateStatus(activityNo, ActivityStatus.PAUSED);
+        activityService.pause(activityNo);
         return Result.success();
     }
 
@@ -114,7 +110,7 @@ public class ActivityController {
      */
     @PutMapping("/{activityNo}/resume")
     public Result<Void> resume(@PathVariable String activityNo) {
-        activityService.updateStatus(activityNo, ActivityStatus.ACTIVE);
+        activityService.resume(activityNo);
         return Result.success();
     }
 
@@ -122,8 +118,8 @@ public class ActivityController {
      * 关闭活动（进行中或暂停状态）
      */
     @PutMapping("/{activityNo}/close")
-    public Result<Void> close(@PathVariable String activityNo, @RequestParam ActivityStatus currentStatus) {
-        activityService.updateStatus(activityNo, ActivityStatus.ENDED);
+    public Result<Void> close(@PathVariable String activityNo) {
+        activityService.close(activityNo);
         return Result.success();
     }
 }

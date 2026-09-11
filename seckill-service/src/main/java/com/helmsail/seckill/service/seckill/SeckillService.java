@@ -52,6 +52,10 @@ public class SeckillService {
             throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
         }
 
+        if (!activityQueryService.isInEffectiveWindow(activityNo)) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
+        }
+
         if (!blacklistCheckService.check(userId)) {
             throw new BizException(SeckillResultEnum.BLACKLISTED);
         }

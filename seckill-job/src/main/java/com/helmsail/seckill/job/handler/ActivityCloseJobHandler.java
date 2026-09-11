@@ -25,18 +25,19 @@ public class ActivityCloseJobHandler {
     public void execute() {
         log.info("活动关闭任务启动");
 
-        // 查询 ACTIVE 和 PENDING 状态的活动
+        // 查询 ACTIVE 和 PAUSED 状态的活动（PENDING 由激活任务先行流转，无需在此处理）
         List<ActivityDTO> activities = new ArrayList<>();
         activities.addAll(activityService.listByStatus(ActivityStatus.ACTIVE));
-        activities.addAll(activityService.listByStatus(ActivityStatus.PENDING));
+        activities.addAll(activityService.listByStatus(ActivityStatus.PAUSED));
 
         LocalDateTime now = LocalDateTime.now();
         int closed = 0;
 
         for (ActivityDTO activity : activities) {
-            if (now.isAfter(activity.getEndTime())) {
+            LocalDateTime closeMoment = LocalDateTime.of(activity.getEndDate(), activity.getEndTime());
+            if (now.isAfter(closeMoment)) {
                 try {
-                    activityService.updateStatus(activity.getActivityNo(), ActivityStatus.ENDED);
+                    activityService.close(activity.getActivityNo());
                     closed++;
                     log.info("活动已关闭: activityNo={}", activity.getActivityNo());
                 } catch (Exception e) {

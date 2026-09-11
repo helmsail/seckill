@@ -1,17 +1,21 @@
 package com.helmsail.seckill.base.activity;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
-import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import com.helmsail.seckill.common.exception.BizException;
+import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
  * 活动服务实现
+ *
+ * 状态规则全部收敛在此：语义化操作 + 矩阵断言 + 条件更新（防并发）
  */
 @Service
 @RequiredArgsConstructor
@@ -22,16 +26,16 @@ public class ActivityServiceImpl implements ActivityBizService {
 
     @Override
     public String create(ActivityRequest request) {
+        validate(request);
         Activity activity = new Activity();
         activity.setActivityNo(SeckillBusinessPrefix.SECKILL_ACTIVITY.buildNo(snowflakeIdGenerator.nextId()));
         activity.setActivityName(request.getActivityName());
+        activity.setStartDate(request.getStartDate());
+        activity.setEndDate(request.getEndDate());
         activity.setStartTime(request.getStartTime());
         activity.setEndTime(request.getEndTime());
-        activity.setEffectiveType(request.getEffectiveType().getCode());
-        activity.setEffectiveDays(request.getEffectiveDays());
-        activity.setEffectiveStart(request.getEffectiveStart());
-        activity.setEffectiveEnd(request.getEffectiveEnd());
-        activity.setPurchaseLimit(request.getPurchaseLimit());
+        activity.setWeekBitmap(request.getWeekBitmap() == null ? WeekBitmap.ALL : request.getWeekBitmap());
+        activity.setPurchaseLimit(request.getPurchaseLimit() == null ? 0 : request.getPurchaseLimit());
         activity.setActivityStatus(ActivityStatus.PENDING.getCode());
         activity.setRemark(request.getRemark());
         activityMapper.insert(activity);
@@ -39,29 +43,80 @@ public class ActivityServiceImpl implements ActivityBizService {
     }
 
     @Override
-    public ActivityDTO getByActivityNo(String activityNo) {
-        Activity activity = activityMapper.selectOne(
-                new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
-        if (activity == null) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
+    public void activate(String activityNo) {
+        Activity activity = getExisting(activityNo);
+        ActivityStatus current = ActivityStatus.byCode(activity.getActivityStatus());
+        if (current != ActivityStatus.PENDING) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
+                    "仅待开始状态可激活，当前状态: " + current.getDesc());
         }
-        return toDTO(activity);
+        transit(activity, ActivityStatus.ACTIVE);
     }
 
     @Override
-    public void updateStatus(String activityNo, ActivityStatus targetStatus) {
-        Activity activity = activityMapper.selectOne(
-                new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
-        if (activity == null) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
+    public void pause(String activityNo) {
+        transit(getExisting(activityNo), ActivityStatus.PAUSED);
+    }
+
+    @Override
+    public void resume(String activityNo) {
+        Activity activity = getExisting(activityNo);
+        LocalDateTime endMoment = LocalDateTime.of(activity.getEndDate(), activity.getEndTime());
+        if (LocalDateTime.now().isAfter(endMoment)) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(), "活动已过结束时刻，无法继续");
         }
-        ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
-        if (!ActivityStatus.canTransit(currentStatus, targetStatus)) {
+        transit(activity, ActivityStatus.ACTIVE);
+    }
+
+    @Override
+    public void close(String activityNo) {
+        transit(getExisting(activityNo), ActivityStatus.CLOSED);
+    }
+
+    @Override
+    public void update(String activityNo, ActivityRequest request) {
+        Activity activity = getExisting(activityNo);
+        ActivityStatus current = ActivityStatus.byCode(activity.getActivityStatus());
+        if (current != ActivityStatus.PENDING) {
             throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
-                    "状态流转不合法: " + currentStatus.getDesc() + " → " + targetStatus.getDesc());
+                    "仅待开始状态可修改，当前状态: " + current.getDesc());
         }
-        activity.setActivityStatus(targetStatus.getCode());
-        activityMapper.updateById(activity);
+        validate(request);
+        activity.setActivityName(request.getActivityName());
+        activity.setStartDate(request.getStartDate());
+        activity.setEndDate(request.getEndDate());
+        activity.setStartTime(request.getStartTime());
+        activity.setEndTime(request.getEndTime());
+        activity.setWeekBitmap(request.getWeekBitmap() == null ? WeekBitmap.ALL : request.getWeekBitmap());
+        activity.setPurchaseLimit(request.getPurchaseLimit() == null ? 0 : request.getPurchaseLimit());
+        activity.setRemark(request.getRemark());
+        int rows = activityMapper.update(activity, new LambdaUpdateWrapper<Activity>()
+                .eq(Activity::getActivityNo, activityNo)
+                .eq(Activity::getActivityStatus, ActivityStatus.PENDING.getCode()));
+        if (rows == 0) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(), "状态已变更，修改失败");
+        }
+    }
+
+    @Override
+    public void delete(String activityNo) {
+        Activity activity = getExisting(activityNo);
+        ActivityStatus current = ActivityStatus.byCode(activity.getActivityStatus());
+        if (current != ActivityStatus.PENDING) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
+                    "仅待开始状态可删除，当前状态: " + current.getDesc());
+        }
+        int rows = activityMapper.delete(new LambdaQueryWrapper<Activity>()
+                .eq(Activity::getActivityNo, activityNo)
+                .eq(Activity::getActivityStatus, ActivityStatus.PENDING.getCode()));
+        if (rows == 0) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(), "状态已变更，删除失败");
+        }
+    }
+
+    @Override
+    public ActivityDTO getByActivityNo(String activityNo) {
+        return toDTO(getExisting(activityNo));
     }
 
     @Override
@@ -72,46 +127,58 @@ public class ActivityServiceImpl implements ActivityBizService {
     }
 
     @Override
-    public void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request) {
+    public List<ActivityDTO> listAll() {
+        List<Activity> list = activityMapper.selectList(new LambdaQueryWrapper<>());
+        return list.stream().map(this::toDTO).toList();
+    }
+
+    /**
+     * 状态流转：矩阵断言 + 条件更新（并发下状态已变则失败）
+     */
+    private void transit(Activity activity, ActivityStatus targetStatus) {
+        ActivityStatus current = ActivityStatus.byCode(activity.getActivityStatus());
+        if (!ActivityStatus.canTransit(current, targetStatus)) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
+                    "状态流转不合法: " + current.getDesc() + " → " + targetStatus.getDesc());
+        }
+        int rows = activityMapper.update(null, new LambdaUpdateWrapper<Activity>()
+                .eq(Activity::getActivityNo, activity.getActivityNo())
+                .eq(Activity::getActivityStatus, current.getCode())
+                .set(Activity::getActivityStatus, targetStatus.getCode()));
+        if (rows == 0) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(), "状态已变更，请刷新后重试");
+        }
+    }
+
+    /**
+     * 参数校验（创建/修改通用）
+     */
+    private void validate(ActivityRequest request) {
+        if (request.getStartDate() == null || request.getEndDate() == null
+                || request.getStartTime() == null || request.getEndTime() == null) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "活动日期与时段不能为空");
+        }
+        if (request.getStartDate().isAfter(request.getEndDate())) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "开始日期不能晚于结束日期");
+        }
+        if (!request.getStartTime().isBefore(request.getEndTime())) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "当天开始时间必须早于结束时间（不支持跨天）");
+        }
+        if (request.getWeekBitmap() != null && !WeekBitmap.isValid(request.getWeekBitmap())) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "周位图必须在 1~127 之间");
+        }
+        if (request.getPurchaseLimit() != null && request.getPurchaseLimit() < 0) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_PARAM_ERROR.getCode(), "限购数量不能为负数");
+        }
+    }
+
+    private Activity getExisting(String activityNo) {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
         if (activity == null) {
             throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
         }
-        ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
-        if (currentStatus != requiredStatus) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
-                    "当前状态不满足修改条件，当前状态: " + currentStatus.getDesc());
-        }
-        updateFields(activity, request);
-        activityMapper.updateById(activity);
-    }
-
-    @Override
-    public void delete(String activityNo, ActivityStatus requiredStatus) {
-        Activity activity = activityMapper.selectOne(
-                new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
-        if (activity == null) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
-        }
-        ActivityStatus currentStatus = ActivityStatus.values()[activity.getActivityStatus()];
-        if (currentStatus != requiredStatus) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(),
-                    "当前状态不满足删除条件，当前状态: " + currentStatus.getDesc());
-        }
-        activityMapper.deleteById(activity.getId());
-    }
-
-    private void updateFields(Activity activity, ActivityRequest request) {
-        if (request.getActivityName() != null) activity.setActivityName(request.getActivityName());
-        if (request.getStartTime() != null) activity.setStartTime(request.getStartTime());
-        if (request.getEndTime() != null) activity.setEndTime(request.getEndTime());
-        if (request.getEffectiveType() != null) activity.setEffectiveType(request.getEffectiveType().getCode());
-        if (request.getEffectiveDays() != null) activity.setEffectiveDays(request.getEffectiveDays());
-        if (request.getEffectiveStart() != null) activity.setEffectiveStart(request.getEffectiveStart());
-        if (request.getEffectiveEnd() != null) activity.setEffectiveEnd(request.getEffectiveEnd());
-        if (request.getPurchaseLimit() != null) activity.setPurchaseLimit(request.getPurchaseLimit());
-        if (request.getRemark() != null) activity.setRemark(request.getRemark());
+        return activity;
     }
 
     private ActivityDTO toDTO(Activity activity) {
@@ -119,14 +186,13 @@ public class ActivityServiceImpl implements ActivityBizService {
         dto.setId(activity.getId());
         dto.setActivityNo(activity.getActivityNo());
         dto.setActivityName(activity.getActivityName());
+        dto.setStartDate(activity.getStartDate());
+        dto.setEndDate(activity.getEndDate());
         dto.setStartTime(activity.getStartTime());
         dto.setEndTime(activity.getEndTime());
-        dto.setEffectiveType(EffectiveType.values()[activity.getEffectiveType()]);
-        dto.setEffectiveDays(activity.getEffectiveDays());
-        dto.setEffectiveStart(activity.getEffectiveStart());
-        dto.setEffectiveEnd(activity.getEffectiveEnd());
+        dto.setWeekBitmap(activity.getWeekBitmap());
         dto.setPurchaseLimit(activity.getPurchaseLimit());
-        dto.setActivityStatus(ActivityStatus.values()[activity.getActivityStatus()]);
+        dto.setActivityStatus(ActivityStatus.byCode(activity.getActivityStatus()));
         dto.setRemark(activity.getRemark());
         return dto;
     }

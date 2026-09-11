@@ -32,9 +32,10 @@ public class ActivityStatusJobHandler {
         int activated = 0;
 
         for (ActivityDTO activity : pendingActivities) {
-            if (now.isAfter(activity.getStartTime()) || now.isEqual(activity.getStartTime())) {
+            LocalDateTime activateMoment = LocalDateTime.of(activity.getStartDate(), activity.getStartTime());
+            if (!now.isBefore(activateMoment)) {
                 try {
-                    activityService.updateStatus(activity.getActivityNo(), ActivityStatus.ACTIVE);
+                    activityService.activate(activity.getActivityNo());
                     activated++;
                     log.info("活动已激活: activityNo={}", activity.getActivityNo());
                 } catch (Exception e) {

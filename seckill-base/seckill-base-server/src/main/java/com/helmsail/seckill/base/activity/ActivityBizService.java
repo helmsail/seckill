@@ -9,13 +9,21 @@ public interface ActivityBizService {
 
     String create(ActivityRequest request);
 
-    ActivityDTO getByActivityNo(String activityNo);
+    void activate(String activityNo);
 
-    void updateStatus(String activityNo, ActivityStatus targetStatus);
+    void pause(String activityNo);
+
+    void resume(String activityNo);
+
+    void close(String activityNo);
+
+    void update(String activityNo, ActivityRequest request);
+
+    void delete(String activityNo);
+
+    ActivityDTO getByActivityNo(String activityNo);
 
     List<ActivityDTO> listByStatus(ActivityStatus status);
 
-    void update(String activityNo, ActivityStatus requiredStatus, ActivityRequest request);
-
-    void delete(String activityNo, ActivityStatus requiredStatus);
+    List<ActivityDTO> listAll();
 }
