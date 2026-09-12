@@ -14,10 +14,7 @@ SET NAMES utf8mb4;
 -- ---------- 建库 ----------
 -- 业务库（docker compose 场景由 MYSQL_DATABASE 自动创建，此处兼容手工执行）
 CREATE DATABASE IF NOT EXISTS seckill DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
--- 调度库（xxl-job 表结构不在本项目内维护，首次启动 xxl-job-admin 前需导入官方脚本：
---   xxl-job 2.5.0 → doc/db/tables_xxl_job.sql）
---   导入命令示例：docker exec -i seckill-mysql mysql -uroot -proot xxl_job < tables_xxl_job.sql
---   未导入前 xxl-job-admin 会反复重启，导入后自动恢复；默认登录账号 admin/123456
+-- 调度库（xxl-job 表结构由同目录 xxl-job-init.sql 自动导入，无需手工操作；默认登录账号 admin/123456）
 CREATE DATABASE IF NOT EXISTS xxl_job DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE seckill;
@@ -79,10 +76,12 @@ CREATE TABLE IF NOT EXISTS sk_order_0 (
     order_status TINYINT NOT NULL DEFAULT 0 COMMENT '订单状态：0=待支付，1=已支付，2=已关闭',
     paid_time DATETIME DEFAULT NULL COMMENT '支付时间',
     trade_no VARCHAR(64) DEFAULT NULL COMMENT '第三方支付流水号',
+    trace_id VARCHAR(64) DEFAULT NULL COMMENT '幂等键（同一次秒杀请求全局唯一，网关生成；NULL 不参与唯一约束）',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0=未删除，1=已删除',
     UNIQUE KEY uk_order_no (order_no),
+    UNIQUE KEY uk_user_trace (user_id, trace_id),
     KEY idx_user_id (user_id),
     KEY idx_trade_no (trade_no),
     KEY idx_is_deleted (is_deleted)
@@ -150,6 +149,18 @@ CREATE TABLE IF NOT EXISTS t_order (
     KEY idx_trade_no (trade_no),
     KEY idx_is_deleted (is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
+
+-- SKU 库存变更流水（Dubbo 库存操作的幂等闸：request_id 唯一约束，与库存更新同事务）
+CREATE TABLE IF NOT EXISTS t_stock_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    request_id VARCHAR(96) NOT NULL COMMENT '幂等键（调用方生成，全局唯一）',
+    sku_no VARCHAR(32) NOT NULL COMMENT 'SKU编号',
+    change_type TINYINT NOT NULL COMMENT '变更类型：1=扣减，2=归还',
+    quantity INT NOT NULL COMMENT '变更数量',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_request_id (request_id),
+    KEY idx_sku_no (sku_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SKU库存变更流水（幂等依据）';
 
 -- ============================ 基础数据 ============================
 

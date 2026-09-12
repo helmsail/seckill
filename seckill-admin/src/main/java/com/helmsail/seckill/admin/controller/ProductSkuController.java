@@ -1,11 +1,14 @@
 package com.helmsail.seckill.admin.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.productsku.AddProductSkuRequest;
 import com.helmsail.seckill.base.productsku.RemoveProductSkuRequest;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
 import com.helmsail.seckill.base.productsku.ShelfProductSkuRequest;
 import com.helmsail.seckill.base.productsku.StockRestoreItem;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
+import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.sku.SkuService;
 import jakarta.validation.Valid;
@@ -14,7 +17,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -34,41 +42,60 @@ public class ProductSkuController {
     @DubboReference
     private SeckillProductSkuService seckillProductSkuService;
 
+    private final RedisService redisService;
+    private final ObjectMapper objectMapper;
+
     /**
      * 批量添加到活动
      *
-     * 编排：逐条划拨主域库存 → 秒杀域批量落库；任一步失败补偿已划拨部分
+     * 编排：逐条划拨主域库存 → 秒杀域批量落库；任一步失败补偿已划拨部分。
      *
-     * TODO 补偿盲区：deductStock 若"远端已执行但响应失败（超时/断连）"，本地 deducted 计数漏记该条，
-     * 补偿循环不包含它 → 主域库存被扣但活动商品未落库（库存黑洞，需人工找回）。
-     * 失败方向偏向"少卖"不超卖，顺序正确；改进路径（由轻到重）：
-     *   1. 失败日志输出已划拨清单（已完成）
-     *   2. deductStock 幂等化（调用方传 requestId，服务端去重）+ 失败时查询确认实际扣减状态再补偿
-     *   3. 对账任务（定时比对主域库存扣减与秒杀域落库记录，自动/半自动修复黑洞）
+     * 幂等保障：划拨/归还均携带 batchId 派生的 requestId（服务端流水去重）；
+     * 故障条失败后同 ID 重放确认——首次实际已扣则命中幂等返回并纳入补偿，
+     * 库存黑洞收敛为“重放确认也失败”的极端残留（有 warn 日志可定位）。
+     * 补偿归还失败登记 seckill:compensation:pending，由 compensationJob 按同 ID 重试
+     * （上限 3 次，超限转 seckill:compensation:failed 人工处理）。
      */
     @PostMapping
     public Result<Void> batchAdd(@Valid @RequestBody AddProductSkuRequest request) {
         List<AddProductSkuRequest.Item> items = request.getItems();
-        int deducted = 0;
+        String batchId = newBatchId();
+        List<AddProductSkuRequest.Item> deductedItems = new ArrayList<>(items.size());
         try {
             for (AddProductSkuRequest.Item item : items) {
-                // TODO 若远端扣减成功但响应失败（假失败），deducted 不会自增 → 补偿漏账（库存黑洞），见方法注释
-                skuService.deductStock(item.getSkuNo(), item.getActivityStock());
-                deducted++;
+                skuService.deductStock(item.getSkuNo(), item.getActivityStock(),
+                        deductRequestId(batchId, item.getSkuNo()));
+                deductedItems.add(item);
             }
             seckillProductSkuService.batchAdd(request);
         } catch (Exception e) {
-            String deductedSkus = items.subList(0, deducted).stream()
+            // 故障条重放确认（requestId 幂等）：首次 deduct 可能“实际成功但响应丢失”，
+            // 同 ID 重放命中幂等返回即确认已扣，纳入补偿归还，消除库存黑洞
+            if (deductedItems.size() < items.size()) {
+                AddProductSkuRequest.Item suspect = items.get(deductedItems.size());
+                try {
+                    skuService.deductStock(suspect.getSkuNo(), suspect.getActivityStock(),
+                            deductRequestId(batchId, suspect.getSkuNo()));
+                    deductedItems.add(suspect);
+                    log.warn("故障条重放确认已扣减，纳入补偿: skuNo={}", suspect.getSkuNo());
+                } catch (Exception confirmEx) {
+                    log.warn("故障条重放确认失败，保持不回补（可能未扣减）: skuNo={}, error={}",
+                            suspect.getSkuNo(), confirmEx.getMessage());
+                }
+            }
+            String deductedSkus = deductedItems.stream()
                     .map(item -> item.getSkuNo() + ":" + item.getActivityStock())
                     .collect(Collectors.joining(", "));
             log.error("添加活动商品失败，开始补偿归还: activityNo={}, 已划拨 {} 条=[{}]",
-                    request.getActivityNo(), deducted, deductedSkus, e);
-            for (int i = 0; i < deducted; i++) {
-                AddProductSkuRequest.Item item = items.get(i);
+                    request.getActivityNo(), deductedItems.size(), deductedSkus, e);
+            for (AddProductSkuRequest.Item item : deductedItems) {
+                String restoreId = restoreRequestId(batchId, item.getSkuNo());
                 try {
-                    skuService.addStock(item.getSkuNo(), item.getActivityStock());
+                    skuService.addStock(item.getSkuNo(), item.getActivityStock(), restoreId);
                 } catch (Exception ex) {
-                    log.error("补偿归还库存失败: skuNo={}", item.getSkuNo(), ex);
+                    log.error("补偿归还库存失败，已登记待补偿: skuNo={}", item.getSkuNo(), ex);
+                    recordCompensation("ADD_ROLLBACK", request.getActivityNo(),
+                            item.getSkuNo(), item.getActivityStock(), restoreId, ex);
                 }
             }
             throw e;
@@ -79,17 +106,21 @@ public class ProductSkuController {
     /**
      * 批量删除（物理删除，仅待开始状态）
      *
-     * 编排：秒杀域删除并取回需归还清单 → 归还主域（失败记录待人工/对账兜底）
+     * 编排：秒杀域删除并取回需归还清单 → 归还主域（失败登记补偿任务，由 compensationJob 重试归还）
      */
     @DeleteMapping
     public Result<Void> batchRemove(@Valid @RequestBody RemoveProductSkuRequest request) {
         List<StockRestoreItem> restoreItems = seckillProductSkuService.batchRemove(request);
+        String batchId = newBatchId();
         for (StockRestoreItem item : restoreItems) {
+            String restoreId = restoreRequestId(batchId, item.getSkuNo());
             try {
-                skuService.addStock(item.getSkuNo(), item.getStockToRestore());
+                skuService.addStock(item.getSkuNo(), item.getStockToRestore(), restoreId);
             } catch (Exception e) {
-                log.error("归还主域库存失败，需人工核对: skuNo={}, stock={}",
+                log.error("归还主域库存失败，已登记待补偿: skuNo={}, stock={}",
                         item.getSkuNo(), item.getStockToRestore(), e);
+                recordCompensation("REMOVE_RESTORE", request.getActivityNo(),
+                        item.getSkuNo(), item.getStockToRestore(), restoreId, e);
             }
         }
         return Result.success();
@@ -110,5 +141,44 @@ public class ProductSkuController {
     @GetMapping("/list")
     public Result<List<SeckillProductSkuDTO>> listByActivityNo(@RequestParam String activityNo) {
         return Result.success(seckillProductSkuService.listByActivityNo(activityNo));
+    }
+
+    /**
+     * 登记库存归还补偿（Redis Hash）：归还失败时兜底，由 compensationJob 定时重试，
+     * 重试超限转入 seckill:compensation:failed 供人工处理。
+     * requestId 随记录保存——补偿重试使用同一 ID，服务端幂等去重（重复执行无副作用）
+     */
+    private void recordCompensation(String type, String activityNo, String skuNo, int stock,
+                                    String requestId, Exception cause) {
+        try {
+            Map<String, Object> record = new LinkedHashMap<>();
+            record.put("type", type);
+            record.put("activityNo", activityNo);
+            record.put("skuNo", skuNo);
+            record.put("stock", stock);
+            record.put("requestId", requestId);
+            record.put("retryCount", 0);
+            record.put("createTime", LocalDateTime.now().toString());
+            record.put("lastError", cause.getClass().getSimpleName() + ": " + cause.getMessage());
+            String field = type + ":" + activityNo + ":" + skuNo;
+            redisService.hSet(SeckillRedisKey.KEY_COMPENSATION_PENDING, field,
+                    objectMapper.writeValueAsString(record));
+        } catch (Exception e) {
+            log.error("补偿登记失败（Redis 不可用），需人工核对: type={}, activityNo={}, skuNo={}, stock={}",
+                    type, activityNo, skuNo, stock, e);
+        }
+    }
+
+    /** 批次 ID：16 位随机串，作为本批划拨/归还 requestId 的稳定前缀（跨重试/重放不变） */
+    private static String newBatchId() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    private static String deductRequestId(String batchId, String skuNo) {
+        return batchId + ":" + skuNo + ":D";
+    }
+
+    private static String restoreRequestId(String batchId, String skuNo) {
+        return batchId + ":" + skuNo + ":R";
     }
 }

@@ -54,4 +54,15 @@ public final class SeckillRedisKey {
 
     /** 支付回调处理锁（标识：orderNo） */
     public static final String KEY_PAY_LOCK = "seckill:pay:lock:%s";
+
+    // ========== 故障落档 / 补偿（运维兜底） ==========
+
+    /** 系统异常落档（标识：traceId）：技术异常导致秒杀失败时保留 30 天，供排查/对账 */
+    public static final String KEY_SECKILL_FAIL_SYSTEM = "seckill:fail:system:%s";
+
+    /** 待补偿库存归还（Hash，field=类型:活动:SKU，value=JSON 明细；compensationJob 消费） */
+    public static final String KEY_COMPENSATION_PENDING = "seckill:compensation:pending";
+
+    /** 补偿重试超限转人工（Hash，field 与 pending 一致） */
+    public static final String KEY_COMPENSATION_FAILED = "seckill:compensation:failed";
 }

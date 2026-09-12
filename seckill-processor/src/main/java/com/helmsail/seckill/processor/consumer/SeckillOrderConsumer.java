@@ -7,10 +7,13 @@ import com.helmsail.seckill.base.activity.ActivityWindows;
 import com.helmsail.seckill.base.mq.MqGroup;
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.CreateSeckillOrderRequest;
+import com.helmsail.seckill.base.order.SeckillOrderDTO;
 import com.helmsail.seckill.base.order.SeckillOrderService;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
+import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.base.seckill.SeckillRequest;
+import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.helmsail.seckill.processor.seckill.PurchaseLimitService;
 import com.helmsail.seckill.processor.seckill.SeckillIdempotentService;
@@ -28,7 +31,17 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * 秒杀下单消费者（RocketMQ 顺序消费）
+ *
+ * 失败语义（有意设计，不依赖 MQ 重投）：
+ *   - 业务失败（限购/库存/窗口/下架）→ 结果键标记 FAILED（重试徒劳）；
+ *   - 技术异常 → 同样标记 FAILED 且不重投（秒杀语义“宁可失败不乱账”），
+ *     用户重新发起即全新 traceId，天然安全；异常详情另落档（seckill:fail:system:{traceId}）供排查/对账。
+ * 幂等链：Redis 结果键（重投拦截）→ traceId 订单查证（兜底短路/回补纠正）→ 唯一约束 uk_user_trace（落库去重）。
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -49,6 +62,7 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
     private ActivityService activityService;
 
     private final SeckillIdempotentService idempotentService;
+    private final RedisService redisService;
     private final StockService stockService;
     private final PurchaseLimitService purchaseLimitService;
     private final ObjectMapper objectMapper;
@@ -59,6 +73,9 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
     /** 发送超时（毫秒） */
     private static final long SEND_TIMEOUT_MS = 3000;
+
+    /** 系统异常落档保留天数（结果键仅 5 分钟，落久档供排查/对账） */
+    private static final int FAIL_RECORD_TTL_DAYS = 30;
 
     @Override
     public void onMessage(MessageExt message) {
@@ -76,10 +93,22 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
             if (!idempotentService.tryProcess(idempotentKey)) return;
 
             try {
+                // 兜底查证：结果键过期（>24h）或 Redis 数据丢失等极端重放时，
+                // 以订单表为准短路，避免重新扣减（正常路径为一次分片索引查询）
+                SeckillOrderDTO existing = findOrderByTraceId(request);
+                if (existing != null) {
+                    log.warn("订单已存在，重放短路: traceId={}, orderNo={}", idempotentKey, existing.getOrderNo());
+                    idempotentService.markSuccess(idempotentKey, existing.getOrderNo());
+                    return;
+                }
+
                 processSeckill(request, idempotentKey);
             } catch (Exception e) {
+                // 设计取舍：技术异常不重投（宁可失败不乱账）——用户重新发起为新 traceId，天然安全；
+                // 异常详情落档 30 天（结果键仅存 5 分钟），供排查与后续对账比对
                 log.error("秒杀处理异常: key={}", idempotentKey, e);
-                idempotentService.markFailed(idempotentKey, "系统异常");
+                idempotentService.markFailed(idempotentKey, "系统异常，请重新发起");
+                recordSystemFailure(request, e);
             }
         } finally {
             BaggageUtils.clear();
@@ -128,9 +157,17 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
             String orderNo = createOrder(request, sku);
             if (orderNo == null) {
-                rollbackStockAndLimit(request, userId);
-                idempotentService.markFailed(idempotentKey, "创建订单失败");
-                return;
+                // createOrder 异常/超时可能“实际已建单但回执丢失”：回补前查证，
+                // 已建则按成功处理（补发延迟关单消息），避免双重回补造成账目不一致
+                SeckillOrderDTO existing = findOrderByTraceId(request);
+                if (existing == null) {
+                    rollbackStockAndLimit(request, userId);
+                    idempotentService.markFailed(idempotentKey, "创建订单失败");
+                    return;
+                }
+                log.warn("createOrder 响应异常但订单已建，按成功处理: traceId={}, orderNo={}",
+                        idempotentKey, existing.getOrderNo());
+                orderNo = existing.getOrderNo();
             }
 
             if (!sendCloseOrderMessage(orderNo)) {
@@ -180,6 +217,7 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
             orderRequest.setQuantity(request.getQuantity());
             orderRequest.setTotalAmount(sku.getOriginalPrice());
             orderRequest.setPayAmount(sku.getSeckillPrice());
+            orderRequest.setTraceId(request.getTraceId());
             return seckillOrderService.createOrder(orderRequest);
         } catch (Exception e) {
             log.error("创建订单失败: {}", e.getMessage());
@@ -206,5 +244,25 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
         stockService.restore(request.getActivityNo(), request.getSkuNo(), request.getQuantity());
         purchaseLimitService.restore(request.getActivityNo(), request.getSkuNo(),
                 userId, request.getQuantity());
+    }
+
+    /** 按 traceId 查订单（带 userId 路由分片）；查询异常上抛由上层统一兜底 */
+    private SeckillOrderDTO findOrderByTraceId(SeckillRequest request) {
+        return seckillOrderService.getByTraceId(
+                Long.parseLong(request.getUserId()), request.getTraceId());
+    }
+
+    /** 系统异常落档（30 天）：保留失败上下文供排查/对账，落档失败不影响主流程 */
+    private void recordSystemFailure(SeckillRequest request, Exception e) {
+        try {
+            String detail = "userId=" + request.getUserId()
+                    + ", activityNo=" + request.getActivityNo()
+                    + ", skuNo=" + request.getSkuNo()
+                    + ", error=" + e.getClass().getSimpleName() + ": " + e.getMessage();
+            redisService.set(String.format(SeckillRedisKey.KEY_SECKILL_FAIL_SYSTEM, request.getTraceId()),
+                    detail, FAIL_RECORD_TTL_DAYS, TimeUnit.DAYS);
+        } catch (Exception ex) {
+            log.error("系统异常落档失败: traceId={}", request.getTraceId(), ex);
+        }
     }
 }

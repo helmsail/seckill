@@ -34,4 +34,5 @@ public class SeckillOrder extends BaseEntity {
     private Integer orderStatus;
     private LocalDateTime paidTime;
     private String tradeNo;
+    private String traceId;
 }

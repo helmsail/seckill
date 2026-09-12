@@ -21,6 +21,13 @@ public interface SeckillOrderService {
     SeckillOrderDTO getByOrderNo(String orderNo) throws BizException;
 
     /**
+     * 按幂等键（traceId）查询订单（带 userId 路由分片；traceId 全局唯一）
+     *
+     * 供调用方做幂等查证：不存在返回 null（非错误语义）
+     */
+    SeckillOrderDTO getByTraceId(Long userId, String traceId) throws BizException;
+
+    /**
      * 使用用户 ID 查找订单（分页）
      */
     PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query) throws BizException;

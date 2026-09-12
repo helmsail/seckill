@@ -121,7 +121,8 @@ public class ActivityRefreshJobHandler {
      * 归还未售库存到主域（剩余值以 Redis 运行期计数为准，读即清零保证同一值只归还一次）
      *
      * 幂等收敛：每轮对终态活动执行——活动关闭后在途订单关单回补产生的残留值，
-     * 会在后续轮次被读到继续归还，最终收敛。归还失败的 SKU 写回原值，下轮重试。
+     * 会在后续轮次被读到继续归还，最终收敛。归还失败的 SKU 写回原值，下轮重试；
+     * 归还经 requestId 服务端幂等（值敏感、跨轮稳定），假失败重试不会重复归还。
      * 未预热（库存键不存在）但已划拨的 SKU 按划拨量全额归还（防“划拨后未预热即关闭”的库存黑洞）；
      * 归还完成写 RESTORED 标记保证跨轮幂等。
      * TODO 终态活动积累较多后，可增加“最近关闭”过滤减少每轮遍历。
@@ -154,7 +155,10 @@ public class ActivityRefreshJobHandler {
             }
             if (toRestore > 0) {
                 try {
-                    skuService.addStock(row.getSkuNo(), toRestore);
+                    // requestId 幂等（值敏感、跨轮稳定）：假失败后的重试命中幂等返回，不会重复归还；
+                    // 真失败时流水随事务回滚，写回原值后下轮可安全重试
+                    skuService.addStock(row.getSkuNo(), toRestore,
+                            "ar:" + activityNo + ":" + row.getSkuNo() + ":" + toRestore);
                 } catch (Exception e) {
                     if (remain != -1) {
                         // 恢复运行期键值，下一轮重试

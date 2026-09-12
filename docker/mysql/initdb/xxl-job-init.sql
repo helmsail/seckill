@@ -121,3 +121,32 @@ WHERE NOT EXISTS (SELECT 1 FROM `xxl_job_user` WHERE `username` = 'admin');
 INSERT INTO `xxl_job_lock` (`lock_name`)
 SELECT 'schedule_lock'
 WHERE NOT EXISTS (SELECT 1 FROM `xxl_job_lock` WHERE `lock_name` = 'schedule_lock');
+
+-- ============================ 业务任务预置 ============================
+-- 执行器组：与 seckill-job 的 xxl.job.executor.appname 一致（地址类型 0=自动注册）
+INSERT INTO `xxl_job_group`(`app_name`, `title`, `address_type`, `address_list`, `update_time`)
+SELECT 'seckill-job', '秒杀任务执行器', 0, NULL, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM `xxl_job_group` WHERE `app_name` = 'seckill-job');
+
+-- 任务清单（幂等：按 executor_handler 判重；演示环境统一每分钟调度，生产按负载调整周期/错峰）
+INSERT INTO `xxl_job_info`(`job_group`, `job_desc`, `add_time`, `update_time`, `author`, `alarm_email`,
+    `schedule_type`, `schedule_conf`, `misfire_strategy`, `executor_route_strategy`, `executor_handler`,
+    `executor_param`, `executor_block_strategy`, `executor_timeout`, `executor_fail_retry_count`, `glue_type`,
+    `glue_source`, `glue_remark`, `glue_updatetime`, `child_jobid`, `trigger_status`, `trigger_last_time`, `trigger_next_time`)
+SELECT g.`id`, t.`job_desc`, NOW(), NOW(), 'seckill', NULL,
+    'CRON', '0 * * * * ?', 'DO_NOTHING', 'FIRST', t.`handler`,
+    NULL, 'SERIAL_EXECUTION', 0, 0, 'BEAN',
+    NULL, NULL, NOW(), NULL, 1, 0, 0
+FROM `xxl_job_group` g
+JOIN (
+    SELECT '活动状态流转：待开始到点激活' AS `job_desc`, 'activityStatusJob' AS `handler`
+    UNION ALL SELECT '活动预热：开始前30分钟写入缓存与库存', 'activityWarmUpJob'
+    UNION ALL SELECT '活动在售名单同步', 'activityShelfJob'
+    UNION ALL SELECT '活动状态同步与终态清理', 'activityRefreshJob'
+    UNION ALL SELECT '活动到期关闭', 'activityCloseJob'
+    UNION ALL SELECT '订单超时关单', 'orderTimeoutJob'
+    UNION ALL SELECT '订单同步对账', 'orderSyncReconcileJob'
+    UNION ALL SELECT '库存补偿重试', 'compensationJob'
+) t ON 1 = 1
+WHERE g.`app_name` = 'seckill-job'
+  AND NOT EXISTS (SELECT 1 FROM `xxl_job_info` i WHERE i.`executor_handler` = t.`handler`);

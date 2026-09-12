@@ -23,8 +23,11 @@ public class SeckillIdempotentService {
     /** 处理中占位有效期（秒）：进程崩溃残留自动过期，避免键永久占用 */
     private static final int PROCESSING_TTL_SECONDS = 30 * 60;
 
-    /** 终态结果保留时长（秒）：供前端轮询获取订单号/失败原因 */
-    private static final int FINAL_TTL_SECONDS = 5 * 60;
+    /**
+     * 终态结果保留时长（秒）：兼作防重放窗口——覆盖 MQ 重投周期（最长小时级），
+     * 期间任何重投都被 tryProcess 直接拦截；同时供前端事后查询订单号/失败原因
+     */
+    private static final int FINAL_TTL_SECONDS = 24 * 60 * 60;
 
     private final RedisService redisService;
     private final ObjectMapper objectMapper;

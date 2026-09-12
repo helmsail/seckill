@@ -12,7 +12,8 @@ import java.util.List;
 /**
  * 订单服务实现（Dubbo 暴露）
  *
- * retries = 0：写路径不做 Dubbo 层自动重试，重投由调用方（MQ 消费/对账）负责
+ * retries = 0：写路径不做 Dubbo 层自动重试；失败语义由调用方决策
+ * （秒杀链路：技术异常即终态不重投，用户重新发起为新 traceId）
  */
 @Service
 @DubboService(retries = 0)

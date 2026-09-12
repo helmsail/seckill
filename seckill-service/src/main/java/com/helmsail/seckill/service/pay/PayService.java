@@ -38,11 +38,13 @@ public class PayService {
 
     private static final int QR_CODE_CACHE_TTL = 10 * 60;
 
-    @DubboReference
+    /** 含 paySuccess 写路径（条件更新幂等），禁用自动重试保持写语义确定 */
+    @DubboReference(retries = 0)
     private SeckillOrderService seckillOrderService;
 
     /** 支付渠道 Dubbo 服务（与本地类同名，使用全限定名区分） */
-    @DubboReference
+    /** 含 preCreate 写路径（渠道预创建），禁用自动重试防止重复建单 */
+    @DubboReference(retries = 0)
     private com.helmsail.seckill.support.api.pay.PayService supportPayService;
     private final RedisService redisService;
     private final RedissonClient redissonClient;

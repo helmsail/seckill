@@ -3,9 +3,7 @@
 # ========== 前置步骤 ==========
 #   1. mvn package -DskipTests                 （生成各服务可执行 jar）
 #   2. cp .env.example .env                    （按需修改密码等变量）
-#   3. 导入 xxl-job 表结构（仅首次，见 docker/mysql/initdb/seckill-init.sql 注释）：
-#        docker exec -i seckill-mysql mysql -uroot -proot xxl_job < tables_xxl_job.sql
-#   4. docker compose up -d --build
+#   3. docker compose up -d --build            （首次启动自动初始化 MySQL：建库建表 + xxl-job 表结构与任务预置，见 docker/mysql/initdb/）
 #
 # ========== 端口（宿主）==========
 #   gateway 18080 | base 18081 | admin 18082 | job 18083 | service 18084 | processor 18085 | support 18086
@@ -32,7 +30,7 @@ services:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      # 首次初始化（仅数据卷为空时执行）：单文件集中维护（建库 + 表结构 + 基础数据）
+      # 首次初始化（仅数据卷为空时执行）：initdb 目录统一维护（建库建表 + xxl-job 初始化，按字母序执行）
       - ./docker/mysql/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD" ]
@@ -73,7 +71,10 @@ services:
       - nacos-data:/home/nacos/data
 
   rocketmq-namesrv:
-    image: apache/rocketmq:4.9.7
+    # 本地镜像（基于官方镜像预建 logs/store 目录，属主 rocketmq）：避免空卷属主 root
+    # 导致进程（rocketmq 用户）不可写而崩溃循环，详见 docker/rocketmq/Dockerfile
+    build: ./docker/rocketmq
+    image: seckill-rocketmq
     container_name: seckill-rocketmq-namesrv
     restart: unless-stopped
     command: sh mqnamesrv
@@ -85,7 +86,10 @@ services:
       - rocketmq-namesrv-logs:/home/rocketmq/logs
 
   rocketmq-broker:
-    image: apache/rocketmq:4.9.7
+    # 本地镜像（基于官方镜像预建 logs/store 目录，属主 rocketmq）：避免空卷属主 root
+    # 导致进程（rocketmq 用户）不可写而崩溃循环（曾表现为退出码 253 无限重启）
+    build: ./docker/rocketmq
+    image: seckill-rocketmq
     container_name: seckill-rocketmq-broker
     restart: unless-stopped
     command: sh mqbroker -c /home/rocketmq/conf/broker.conf
@@ -171,6 +175,8 @@ services:
         condition: service_healthy
       nacos:
         condition: service_started
+      redis:
+        condition: service_healthy
     ports:
       - "18082:18082"
 

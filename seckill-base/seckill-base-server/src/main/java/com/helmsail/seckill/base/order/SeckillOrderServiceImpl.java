@@ -11,6 +11,7 @@ import com.helmsail.seckill.common.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -19,7 +20,8 @@ import java.util.List;
 /**
  * 秒杀订单服务实现（Dubbo 暴露）
  *
- * retries = 0：本服务含非幂等写操作（创建订单），自动重试会造成重复下单
+ * retries = 0：写路径不做自动重试（保持调用语义确定）；
+ * 创建订单已按 traceId 幂等（uk_user_trace 唯一约束，重复落库时返回已建订单号）。
  */
 @Slf4j
 @Service
@@ -40,8 +42,21 @@ public class SeckillOrderServiceImpl implements SeckillOrderService {
         order.setQuantity(request.getQuantity());
         order.setTotalAmount(request.getTotalAmount());
         order.setPayAmount(request.getPayAmount());
+        order.setTraceId(request.getTraceId());
         order.setOrderStatus(SeckillOrderStatus.PENDING.getCode());
-        seckillOrderMapper.insert(order);
+        try {
+            seckillOrderMapper.insert(order);
+        } catch (DuplicateKeyException e) {
+            // 幂等：同 traceId 订单已存在（调用超时重放/消息重投场景），返回已建订单号而非重复落库
+            SeckillOrder existing = seckillOrderMapper.selectOne(new LambdaQueryWrapper<SeckillOrder>()
+                    .eq(SeckillOrder::getUserId, request.getUserId())
+                    .eq(SeckillOrder::getTraceId, request.getTraceId()));
+            if (existing == null) {
+                throw e;
+            }
+            log.warn("订单已存在，幂等返回: traceId={}, orderNo={}", request.getTraceId(), existing.getOrderNo());
+            return existing.getOrderNo();
+        }
         return order.getOrderNo();
     }
 
@@ -53,6 +68,15 @@ public class SeckillOrderServiceImpl implements SeckillOrderService {
             throw new BizException(SeckillResultEnum.ORDER_NOT_FOUND);
         }
         return toDTO(order);
+    }
+
+    @Override
+    public SeckillOrderDTO getByTraceId(Long userId, String traceId) {
+        // 带 userId（分片键）路由单分片并命中唯一索引 uk_user_trace；不存在返回 null（查证语义）
+        SeckillOrder order = seckillOrderMapper.selectOne(new LambdaQueryWrapper<SeckillOrder>()
+                .eq(SeckillOrder::getUserId, userId)
+                .eq(SeckillOrder::getTraceId, traceId));
+        return order == null ? null : toDTO(order);
     }
 
     @Override

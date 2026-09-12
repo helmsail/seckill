@@ -30,4 +30,7 @@ public class CreateSeckillOrderRequest implements Serializable {
 
     /** 实付金额 */
     private BigDecimal payAmount;
+
+    /** 幂等键（同一次秒杀请求全局唯一，网关生成）：订单落库去重依据，重复落库时幂等返回已建订单 */
+    private String traceId;
 }
