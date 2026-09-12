@@ -27,3 +27,5 @@ rocketmq:
   name-server: ${ROCKETMQ_ADDR}
   producer:
     group: seckill-producer
+    # 首次向新 topic 发送时 broker 自动创建较慢，默认 3s 易误报超时
+    send-message-timeout: 5000

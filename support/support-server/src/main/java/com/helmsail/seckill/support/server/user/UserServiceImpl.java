@@ -9,17 +9,20 @@ import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.user.LoginRequest;
 import com.helmsail.seckill.support.api.user.LoginResponse;
 import com.helmsail.seckill.support.api.user.UserDTO;
+import com.helmsail.seckill.support.api.user.UserService;
 import lombok.RequiredArgsConstructor;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
 
 /**
- * 用户服务实现
+ * 用户服务实现（Dubbo 暴露）
  */
 @Service
+@DubboService
 @RequiredArgsConstructor
-public class UserServiceImpl implements UserBizService {
+public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
     private final JwtUtils jwtUtils;

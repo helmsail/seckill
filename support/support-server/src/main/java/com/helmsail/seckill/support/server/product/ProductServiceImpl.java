@@ -6,19 +6,22 @@ import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.support.api.product.ProductDTO;
 import com.helmsail.seckill.support.api.product.ProductPageQuery;
+import com.helmsail.seckill.support.api.product.ProductService;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import lombok.RequiredArgsConstructor;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
 
 /**
- * 商品服务实现
+ * 商品服务实现（Dubbo 暴露）
  */
 @Service
+@DubboService
 @RequiredArgsConstructor
-public class ProductServiceImpl implements ProductBizService {
+public class ProductServiceImpl implements ProductService {
 
     private final ProductMapper productMapper;
 

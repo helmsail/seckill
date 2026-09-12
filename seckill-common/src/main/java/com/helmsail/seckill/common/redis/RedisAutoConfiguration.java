@@ -12,10 +12,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * 仅当 classpath 存在 Redis 客户端时装配。
  */
 @Configuration
+@ConditionalOnClass(StringRedisTemplate.class)
 public class RedisAutoConfiguration {
 
     @Bean
-    @ConditionalOnClass(StringRedisTemplate.class)
     @ConditionalOnMissingBean
     public RedisService redisService(StringRedisTemplate redisTemplate) {
         return new RedisService(redisTemplate);

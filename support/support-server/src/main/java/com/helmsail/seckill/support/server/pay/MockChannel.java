@@ -7,6 +7,7 @@ import com.helmsail.seckill.support.api.pay.PayTradeStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
@@ -31,6 +32,9 @@ public class MockChannel implements PayChannel {
     /** 交易台账：outTradeNo → 是否已支付（演示用途，单实例内存态，重启即失） */
     private final Map<String, Boolean> paidLedger = new ConcurrentHashMap<>();
 
+    /** 金额台账：outTradeNo → 预创建时登记金额（回调核账用，防止失败回调污染支付状态） */
+    private final Map<String, String> amountLedger = new ConcurrentHashMap<>();
+
     @Override
     public PayChannelType getChannelType() {
         return PayChannelType.MOCK;
@@ -40,6 +44,9 @@ public class MockChannel implements PayChannel {
     public String preCreate(String subject, String outTradeNo, String totalAmount) {
         log.info("【模拟支付】预创建二维码: outTradeNo={}, subject={}, amount={}", outTradeNo, subject, totalAmount);
         paidLedger.putIfAbsent(outTradeNo, Boolean.FALSE);
+        if (totalAmount != null) {
+            amountLedger.putIfAbsent(outTradeNo, totalAmount);
+        }
         return "https://mock.pay/qr/" + outTradeNo;
     }
 
@@ -53,11 +60,32 @@ public class MockChannel implements PayChannel {
         result.setTradeStatus(params.getOrDefault("trade_status", PayTradeStatus.PAID));
         result.setTotalAmount(params.get("total_amount"));
         if (outTradeNo != null) {
-            // 回调到达即用户完成付款，登记台账
-            paidLedger.put(outTradeNo, Boolean.TRUE);
+            // 回调到达即用户完成付款，登记台账；金额与预创建登记不一致时视为支付不成立，不落账
+            // （否则业务侧拒收回调后，渠道台账已是已支付，关单前查单会把订单误补记为支付成功）
+            if (isAmountConsistent(outTradeNo, params.get("total_amount"))) {
+                paidLedger.put(outTradeNo, Boolean.TRUE);
+            } else {
+                log.warn("【模拟支付】回调金额与登记金额不一致，不登记支付: outTradeNo={}, notified={}, registered={}",
+                        outTradeNo, params.get("total_amount"), amountLedger.get(outTradeNo));
+            }
         }
         log.info("【模拟支付】验签通过: outTradeNo={}, tradeStatus={}", result.getOutTradeNo(), result.getTradeStatus());
         return result;
+    }
+
+    /**
+     * 回调金额与预创建登记金额核对（任一缺失按一致处理，兼容不传金额的既有用法）
+     */
+    private boolean isAmountConsistent(String outTradeNo, String notifiedAmount) {
+        String registered = amountLedger.get(outTradeNo);
+        if (notifiedAmount == null || registered == null) {
+            return true;
+        }
+        try {
+            return new BigDecimal(registered).compareTo(new BigDecimal(notifiedAmount)) == 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     @Override

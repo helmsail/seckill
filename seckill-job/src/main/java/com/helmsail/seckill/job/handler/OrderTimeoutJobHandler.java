@@ -23,8 +23,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OrderTimeoutJobHandler {
 
-    /** 补关单阈值（分钟），需大于延迟消息时长（10 分钟） */
-    private static final int TIMEOUT_MINUTES = 15;
+    /** 补关单阈值（分钟）：延迟消息时长（10 分钟）+ 1 分钟冗余，只补漏不误抢 */
+    private static final int TIMEOUT_MINUTES = 11;
 
     /** 单次扫描上限（分片表按分片生效，实际量最多为 分片数 × limit） */
     private static final int BATCH_LIMIT = 100;

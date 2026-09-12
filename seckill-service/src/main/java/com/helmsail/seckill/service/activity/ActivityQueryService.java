@@ -5,30 +5,33 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
-import com.helmsail.seckill.base.activity.ActivityWindows;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
+import com.helmsail.seckill.base.result.SeckillResultEnum;
+import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.service.cache.CaffeineCache;
+import com.helmsail.seckill.service.support.CaffeineCache;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * C 端活动查询服务（纯读）
+ *
+ * 三层读取：Caffeine（软/硬过期）→ Redis 快照 → Dubbo 回源。
+ * 秒杀准入判定已收归 CheckService，本类只负责查询与缓存。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ActivityQueryService {
-
-    private static final String SISMEMBER_LUA = "return redis.call('sismember', KEYS[1], ARGV[1])";
 
     @DubboReference
     private ActivityService activityService;
@@ -46,7 +49,8 @@ public class ActivityQueryService {
     @PostConstruct
     public void init() {
         activityListCache = new CaffeineCache<>(30, 10, 1000, this::loadActivityList, this::fallbackActivityList);
-        activityInfoCache = new CaffeineCache<>(300, 60, 1000, this::loadActivityInfo, this::fallbackActivityInfo);
+        // 活动状态流转（激活/关闭）依赖 refresh job 同步 Redis 快照，硬过期从 300s 收紧到 60s 缩短 C 端生效延迟窗口
+        activityInfoCache = new CaffeineCache<>(60, 30, 1000, this::loadActivityInfo, this::fallbackActivityInfo);
         activityProductCache = new CaffeineCache<>(300, 60, 1000, this::loadProductList, this::fallbackProductList);
     }
 
@@ -73,7 +77,33 @@ public class ActivityQueryService {
     }
 
     private ActivityDTO fallbackActivityInfo(String key) {
-        return activityService.getByActivityNo(key);
+        try {
+            return activityService.getByActivityNo(key);
+        } catch (Exception e) {
+            // 活动不存在：返回 null 走空值缓存（穿透保护），准入检查按“不存在”处理。
+            // 注意：Caffeine 会将 loader 异常包装为 CompletionException，需沿 cause 链识别 BizException
+            BizException bizException = findBizException(e);
+            if (bizException != null
+                    && SeckillResultEnum.ACTIVITY_NOT_FOUND.getCode().equals(bizException.getCode())) {
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 沿 cause 链查找 BizException（跨进程/框架包装后类型会丢失）
+     */
+    private static BizException findBizException(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof BizException bizException) {
+                return bizException;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return null;
     }
 
     private List<SeckillProductSkuDTO> loadProductList(String key) {
@@ -115,26 +145,6 @@ public class ActivityQueryService {
 
     public List<SeckillProductSkuDTO> getProductListByActivityNo(String activityNo) {
         return activityProductCache.get(activityNo);
-    }
-
-    /**
-     * 抢购生效判定（缓存数据，仅作前置过滤）
-     *
-     * 正确性以 processor 的 DB 权威终判为准（ActivityWindows 同一套规则）。
-     */
-    public boolean isInEffectiveWindow(String activityNo) {
-        return ActivityWindows.isInEffectiveWindow(getActivityByNo(activityNo), LocalDateTime.now());
-    }
-
-    /**
-     * 在售判定（Redis 名单，仅作前置过滤）
-     *
-     * 正确性以 processor 的 DB 权威状态终判为准；名单滞后最多导致少量请求白跑。
-     */
-    public boolean isSkuOnShelf(String activityNo, String skuNo) {
-        String key = String.format(SeckillRedisKey.KEY_ACTIVITY_SHELF, activityNo);
-        Long result = redisService.executeLua(SISMEMBER_LUA, Collections.singletonList(key), skuNo);
-        return result != null && result > 0;
     }
 
     public Integer getSkuStock(String activityNo, String skuNo) {

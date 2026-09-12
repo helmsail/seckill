@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Configuration;
  * Reactive 环境（网关）的异常由网关自己的 ErrorWebExceptionHandler 实现。
  */
 @Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class ExceptionAutoConfiguration {
 
     @Bean

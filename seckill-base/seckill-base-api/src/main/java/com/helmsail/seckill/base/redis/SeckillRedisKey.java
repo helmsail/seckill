@@ -28,6 +28,9 @@ public final class SeckillRedisKey {
     /** SKU 库存初始总量（restore 上界参照，预热写入后不再变更；标识：activityNo:skuNo） */
     public static final String KEY_SKU_STOCK_TOTAL = "seckill:sku:stock:total:%s:%s";
 
+    /** SKU 库存归还完成标记（终态清理跨轮幂等依据，写入后长期保留；标识：activityNo:skuNo） */
+    public static final String KEY_SKU_STOCK_RESTORED = "seckill:sku:stock:restored:%s:%s";
+
     // ========== 限流 / 限购 / 黑名单 ==========
 
     /** 用户级限流（标识：userId） */

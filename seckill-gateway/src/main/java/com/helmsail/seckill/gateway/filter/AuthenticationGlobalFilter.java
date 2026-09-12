@@ -3,9 +3,9 @@ package com.helmsail.seckill.gateway.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.common.jwt.JwtClaims;
 import com.helmsail.seckill.common.jwt.JwtUtils;
+import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.gateway.auth.GatewayAuth;
-import com.helmsail.seckill.gateway.result.GatewayError;
-import com.helmsail.seckill.gateway.result.Result;
+import com.helmsail.seckill.gateway.exception.GatewayError;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,7 +90,7 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
         try {
-            byte[] bytes = mapper.writeValueAsBytes(Result.fail(error, message));
+            byte[] bytes = mapper.writeValueAsBytes(Result.of(error.getCode(), message));
             return response.writeWith(Mono.just(response.bufferFactory().wrap(bytes)));
         } catch (Exception e) {
             return response.setComplete();

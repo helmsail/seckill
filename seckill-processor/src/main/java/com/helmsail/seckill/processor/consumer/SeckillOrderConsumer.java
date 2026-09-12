@@ -54,7 +54,11 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
     private final ObjectMapper objectMapper;
     private final RocketMQTemplate rocketMQTemplate;
 
-    private static final int CLOSE_ORDER_DELAY_LEVEL = 14; // 10分钟
+    /** 关单延迟级别：默认延迟级别表第 14 级 = 10 分钟（4.x broker 定时消息以延迟级别实现） */
+    private static final int CLOSE_ORDER_DELAY_LEVEL = 14;
+
+    /** 发送超时（毫秒） */
+    private static final long SEND_TIMEOUT_MS = 3000;
 
     @Override
     public void onMessage(MessageExt message) {
@@ -186,7 +190,11 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
     private boolean sendCloseOrderMessage(String orderNo) {
         try {
             Message<String> message = BaggageUtils.buildMessage(orderNo);
-            rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message, CLOSE_ORDER_DELAY_LEVEL);
+            // 延迟发送注意两点：
+            //   1) 三参 syncSend 的第三参是“超时毫秒”而非延迟级别，误传级别会导致假超时且消息立即投递；
+            //   2) syncSendDelayTimeSeconds 依赖 5.x 客户端定时消息（Message.setDelayTimeSec），4.x broker 不支持会立即投递；
+            //      本项目 broker 为 4.9.7，必须用四参重载（第三参=超时，第四参=延迟级别）
+            rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message, SEND_TIMEOUT_MS, CLOSE_ORDER_DELAY_LEVEL);
             return true;
         } catch (Exception e) {
             log.error("发送延迟消息失败: orderNo={}", orderNo, e);

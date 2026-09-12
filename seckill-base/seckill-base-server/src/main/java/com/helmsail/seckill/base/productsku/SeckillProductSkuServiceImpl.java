@@ -9,6 +9,7 @@ import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.ResultEnum;
 import lombok.RequiredArgsConstructor;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,13 +21,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 活动商品SKU服务实现
+ * 活动商品SKU服务实现（Dubbo 暴露）
  *
  * 状态规则收敛在此：添加/删除仅待开始；上架/下架非终态可用。
+ * retries = 0：本服务含非幂等写操作（批量增删/上下架），自动重试会产生重复副作用
  */
 @Service
+@DubboService(retries = 0)
 @RequiredArgsConstructor
-public class SeckillProductSkuServiceImpl implements SeckillProductSkuBizService {
+public class SeckillProductSkuServiceImpl implements SeckillProductSkuService {
 
     private static final int SHELF_ON = 1;
     private static final int SHELF_OFF = 0;

@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.user;
+package com.helmsail.seckill.service.web;
 
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.user.LoginRequest;

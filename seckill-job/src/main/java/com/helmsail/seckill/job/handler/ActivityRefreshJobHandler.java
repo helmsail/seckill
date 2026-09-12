@@ -48,10 +48,15 @@ public class ActivityRefreshJobHandler {
     private final RedisService redisService;
     private final ObjectMapper objectMapper;
 
-    /** 读取即清零：返回剩余值并删除键（-1 表示键不存在） */
+    /**
+     * 读取即清零：返回剩余值并删除键（-1 表示键不存在）
+     *
+     * 注意：Redis Lua 中 GET 不存在的键返回 false（RESP nil 转 Lua false），而非 Lua nil，
+     * 须用 `not v` 判断；若写 `v == nil` 则空键会落到 tonumber(false)→nil，Java 侧收到 null。
+     */
     private static final String TAKE_STOCK_LUA =
             "local v = redis.call('get', KEYS[1]) "
-            + "if v == nil then return -1 end "
+            + "if not v then return -1 end "
             + "redis.call('del', KEYS[1]) "
             + "return tonumber(v)";
 
@@ -117,28 +122,51 @@ public class ActivityRefreshJobHandler {
      *
      * 幂等收敛：每轮对终态活动执行——活动关闭后在途订单关单回补产生的残留值，
      * 会在后续轮次被读到继续归还，最终收敛。归还失败的 SKU 写回原值，下轮重试。
-     * 注：未预热（库存键不存在）的 SKU 视为从未进入运行期，跳过归还。
-     * TODO 终态活动积累较多后，可增加"最近关闭"过滤减少每轮遍历。
+     * 未预热（库存键不存在）但已划拨的 SKU 按划拨量全额归还（防“划拨后未预热即关闭”的库存黑洞）；
+     * 归还完成写 RESTORED 标记保证跨轮幂等。
+     * TODO 终态活动积累较多后，可增加“最近关闭”过滤减少每轮遍历。
      */
     private void restoreStock(String activityNo) {
         List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
         for (SeckillProductSkuDTO row : rows) {
             String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
             String totalKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_TOTAL, activityNo, row.getSkuNo());
+            String restoredKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_RESTORED, activityNo, row.getSkuNo());
+            // 已处理过的 SKU 幂等跳过
+            if (redisService.get(restoredKey) != null) {
+                continue;
+            }
             Long remain = redisService.executeLua(TAKE_STOCK_LUA, Collections.singletonList(stockKey));
             if (remain == null) {
                 continue;
             }
-            if (remain > 0) {
+            int toRestore;
+            if (remain == -1) {
+                // 库存键不存在：从未预热（运行期未开始）却已划拨（主域已扣）——按划拨量全额归还，避免库存黑洞
+                // 注：升级存量环境时为历史已关闭活动补 RESTORED 标记可确保不重复归还
+                toRestore = row.getActivityStock() == null ? 0 : row.getActivityStock();
+                if (toRestore > 0) {
+                    log.warn("活动未预热即关闭，按划拨量归还库存: activityNo={}, skuNo={}, restore={}",
+                            activityNo, row.getSkuNo(), toRestore);
+                }
+            } else {
+                toRestore = remain.intValue();
+            }
+            if (toRestore > 0) {
                 try {
-                    skuService.addStock(row.getSkuNo(), remain.intValue());
+                    skuService.addStock(row.getSkuNo(), toRestore);
                 } catch (Exception e) {
-                    redisService.set(stockKey, String.valueOf(remain));
+                    if (remain != -1) {
+                        // 恢复运行期键值，下一轮重试
+                        redisService.set(stockKey, String.valueOf(remain));
+                    }
                     log.error("库存归还主域失败: activityNo={}, skuNo={}, remain={}",
-                            activityNo, row.getSkuNo(), remain, e);
+                            activityNo, row.getSkuNo(), toRestore, e);
                     continue;
                 }
             }
+            // 处理完成：写幂等标记并清理初始总量键
+            redisService.set(restoredKey, "1");
             redisService.delete(totalKey);
         }
     }

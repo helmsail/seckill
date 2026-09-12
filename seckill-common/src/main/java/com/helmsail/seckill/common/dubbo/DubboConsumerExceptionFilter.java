@@ -11,6 +11,8 @@ import org.apache.dubbo.rpc.*;
  * Consumer 异常过滤器
  *
  * 自动解析 Provider 返回的异常，转换为 BizException。
+ * 注意：Dubbo 的 ExceptionFilter 会将“接口未声明 throws”的自定义异常包装为 RuntimeException，
+ * 因此需沿 cause 链解包，恢复原始 BizException 以保留业务错误码。
  */
 @Slf4j
 @Activate(group = CommonConstants.CONSUMER)
@@ -23,12 +25,13 @@ public class DubboConsumerExceptionFilter implements Filter {
         if (result.hasException()) {
             Throwable ex = result.getException();
 
-            // 已经是 BizException，直接抛出
-            if (ex instanceof BizException) {
+            // 解包 Dubbo 包装后的业务异常，恢复原始 BizException（保留业务错误码）
+            BizException bizException = findBizException(ex);
+            if (bizException != null) {
                 log.warn("[Dubbo Consumer] {}.{} 业务异常: {}",
                         invoker.getInterface().getSimpleName(),
-                        invocation.getMethodName(), ex.getMessage());
-                throw (BizException) ex;
+                        invocation.getMethodName(), bizException.getMessage());
+                throw bizException;
             }
 
             // 其他异常包装为 BizException
@@ -39,5 +42,20 @@ public class DubboConsumerExceptionFilter implements Filter {
         }
 
         return result;
+    }
+
+    /**
+     * 沿 cause 链查找 BizException（异常被 Dubbo 运行时包装时类型会丢失）
+     */
+    private static BizException findBizException(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof BizException bizException) {
+                return bizException;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return null;
     }
 }

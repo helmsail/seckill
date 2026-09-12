@@ -2,8 +2,7 @@ package com.helmsail.seckill.gateway.exception;
 
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.helmsail.seckill.gateway.result.GatewayError;
-import com.helmsail.seckill.gateway.result.Result;
+import com.helmsail.seckill.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
@@ -52,10 +51,10 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
         if (ex instanceof ResponseStatusException rse) {
             httpStatus = HttpStatus.valueOf(rse.getStatusCode().value());
             String message = rse.getReason() != null ? rse.getReason() : "请求处理失败";
-            result = Result.fail(GatewayError.BAD_GATEWAY, message);
+            result = Result.of(GatewayError.BAD_GATEWAY.getCode(), message);
         } else {
             httpStatus = HttpStatus.BAD_GATEWAY;
-            result = Result.fail(GatewayError.BAD_GATEWAY);
+            result = Result.of(GatewayError.BAD_GATEWAY);
             log.error("网关异常: path={}, error={}", exchange.getRequest().getURI().getPath(), ex.getMessage(), ex);
         }
 

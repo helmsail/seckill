@@ -36,23 +36,29 @@ spring:
         dashboard: ${SENTINEL_DASHBOARD_ADDR}
       datasource:
         # 网关限流规则，从 Nacos 动态读取
+        # 规则 JSON 发布位置：命名空间 seckill-sentinel，dataId=seckill-gateway-sentinel-gw-flow.json，group=SENTINEL_GROUP
+        # 注意两点：
+        #   1) 不要写 namespace: public —— 客户端按字面量查询会读不到配置（nacos#9418）；
+        #   2) nacos-client 3.x 连 2.x 服务端时默认命名空间读取异常（SCA#4098），必须使用自定义命名空间
         gw-flow:
           nacos:
             server-addr: ${NACOS_ADDR}
             username: ${NACOS_USERNAME}
             password: ${NACOS_PASSWORD}
-            namespace: public
+            namespace: seckill-sentinel
             data-id: ${spring.application.name}-sentinel-gw-flow.json
             group-id: SENTINEL_GROUP
             data-type: json
             rule-type: gw-flow
 
-  nacos:
-    config:
-      server-addr: ${NACOS_ADDR}
-      username: ${NACOS_USERNAME}
-      password: ${NACOS_PASSWORD}
-      file-extension: yml
+    # Nacos 配置中心（与 Sentinel 规则共用自定义命名空间；nacos-client 3.x + server 2.x 下默认命名空间不可用）
+    nacos:
+      config:
+        server-addr: ${NACOS_ADDR}
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
+        namespace: seckill-sentinel
+        file-extension: yml
 
 # JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）
 jwt:

@@ -1,8 +1,7 @@
 package com.helmsail.seckill.gateway.exception;
 
 import com.alibaba.csp.sentinel.adapter.gateway.sc.callback.BlockRequestHandler;
-import com.helmsail.seckill.gateway.result.GatewayError;
-import com.helmsail.seckill.gateway.result.Result;
+import com.helmsail.seckill.common.result.Result;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -21,6 +20,6 @@ public class SentinelBlockConfig {
     public BlockRequestHandler blockRequestHandler() {
         return (exchange, throwable) -> ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Result.fail(GatewayError.RATE_LIMITED, "请求过于频繁"));
+                .bodyValue(Result.of(GatewayError.RATE_LIMITED));
     }
 }

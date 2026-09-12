@@ -12,10 +12,6 @@ import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.common.tracing.BaggageKeys;
 import com.helmsail.seckill.common.tracing.UserContext;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
-import com.helmsail.seckill.service.activity.ActivityQueryService;
-import com.helmsail.seckill.service.check.BlacklistCheckService;
-import com.helmsail.seckill.service.check.RateLimitCheckService;
-import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -25,16 +21,19 @@ import org.springframework.stereotype.Service;
 
 import java.util.UUID;
 
+/**
+ * 秒杀编排服务
+ *
+ * 准入检查全部委托 CheckService（逐项失败即抛对应业务码），
+ * 通过后发送 MQ 异步下单；结果由 processor 写回结果键，C 端轮询获取。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SeckillService {
 
-    private final RateLimitCheckService rateLimitCheckService;
-    private final BlacklistCheckService blacklistCheckService;
-    private final ActivityQueryService activityQueryService;
+    private final CheckService checkService;
     private final RedisService redisService;
-    private final SeckillConfig config;
     private final RocketMQTemplate rocketMQTemplate;
     private final ObjectMapper objectMapper;
 
@@ -48,31 +47,28 @@ public class SeckillService {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
 
-        if (!rateLimitCheckService.check(userId)) {
+        if (!checkService.checkRateLimit(userId)) {
             throw new BizException(SeckillResultEnum.RATE_LIMITED);
         }
 
-        if (!blacklistCheckService.checkActivityStatus(activityNo, userId)) {
+        if (!checkService.checkActivityStatus(activityNo, userId)) {
             throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
         }
 
-        if (!activityQueryService.isInEffectiveWindow(activityNo)) {
+        if (!checkService.checkEffectiveWindow(activityNo)) {
             throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
         }
 
-        if (!activityQueryService.isSkuOnShelf(activityNo, skuNo)) {
+        if (!checkService.checkSkuOnShelf(activityNo, skuNo)) {
             throw new BizException(SeckillResultEnum.SKU_OFF_SHELF);
         }
 
-        if (!blacklistCheckService.check(userId)) {
+        if (!checkService.checkBlacklist(userId)) {
             throw new BizException(SeckillResultEnum.BLACKLISTED);
         }
 
-        if (config.getCheck().isStock()) {
-            Integer stock = activityQueryService.getSkuStock(activityNo, skuNo);
-            if (stock == null || stock < request.getQuantity()) {
-                throw new BizException(SeckillResultEnum.STOCK_INSUFFICIENT);
-            }
+        if (!checkService.checkStock(activityNo, skuNo, request.getQuantity())) {
+            throw new BizException(SeckillResultEnum.STOCK_INSUFFICIENT);
         }
 
         request.setUserId(userId);

@@ -1,5 +1,7 @@
 package com.helmsail.seckill.base.productsku;
 
+import com.helmsail.seckill.common.exception.BizException;
+
 import java.util.List;
 
 /**
@@ -15,27 +17,27 @@ public interface SeckillProductSkuService {
      *
      * 主域库存划拨由调用方先行完成；本服务失败时调用方负责补偿归还。
      */
-    void batchAdd(AddProductSkuRequest request);
+    void batchAdd(AddProductSkuRequest request) throws BizException;
 
     /**
      * 批量删除（仅待开始状态可用；物理删除）
      *
      * @return 需归还主域的库存清单，由调用方编排归还
      */
-    List<StockRestoreItem> batchRemove(RemoveProductSkuRequest request);
+    List<StockRestoreItem> batchRemove(RemoveProductSkuRequest request) throws BizException;
 
     /**
      * 批量上架/下架（活动非终态可用，仅切换状态位，不触碰库存）
      */
-    void batchShelf(ShelfProductSkuRequest request);
+    void batchShelf(ShelfProductSkuRequest request) throws BizException;
 
     /**
      * 查询活动下全部商品SKU
      */
-    List<SeckillProductSkuDTO> listByActivityNo(String activityNo);
+    List<SeckillProductSkuDTO> listByActivityNo(String activityNo) throws BizException;
 
     /**
      * 按活动编号 + SKU 编号查询单条
      */
-    SeckillProductSkuDTO getByActivityNoAndSkuNo(String activityNo, String skuNo);
+    SeckillProductSkuDTO getByActivityNoAndSkuNo(String activityNo, String skuNo) throws BizException;
 }

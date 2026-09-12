@@ -1,5 +1,7 @@
 package com.helmsail.seckill.support.api.pay;
 
+import com.helmsail.seckill.common.exception.BizException;
+
 import java.util.Map;
 
 /**
@@ -16,7 +18,7 @@ public interface PayService {
      * @param request 支付请求
      * @return 二维码链接
      */
-    String preCreate(PayChannelType channel, PayRequest request);
+    String preCreate(PayChannelType channel, PayRequest request) throws BizException;
 
     /**
      * 验签并解析异步通知（仅技术验证，不做业务判断）
@@ -25,7 +27,7 @@ public interface PayService {
      * @param params  异步通知的原始参数
      * @return 验签与解析结果
      */
-    PayNotifyResult verifyNotify(PayChannelType channel, Map<String, String> params);
+    PayNotifyResult verifyNotify(PayChannelType channel, Map<String, String> params) throws BizException;
 
     /**
      * 主动查询交易状态
@@ -34,5 +36,5 @@ public interface PayService {
      * @param outTradeNo 商户订单号
      * @return 交易查询结果
      */
-    PayTradeResult queryTrade(PayChannelType channel, String outTradeNo);
+    PayTradeResult queryTrade(PayChannelType channel, String outTradeNo) throws BizException;
 }

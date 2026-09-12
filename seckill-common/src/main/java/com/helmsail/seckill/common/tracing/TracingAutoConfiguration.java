@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
  * Dubbo 侧通过 SPI 过滤器自动生效（见 META-INF/dubbo）。
  */
 @Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class TracingAutoConfiguration {
 
     @Bean

@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.cache;
+package com.helmsail.seckill.service.support;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.LoadingCache;

@@ -41,31 +41,34 @@ public class PayService {
     @DubboReference
     private SeckillOrderService seckillOrderService;
 
-    private final com.helmsail.seckill.support.api.pay.PayService supportPayService;
+    /** 支付渠道 Dubbo 服务（与本地类同名，使用全限定名区分） */
+    @DubboReference
+    private com.helmsail.seckill.support.api.pay.PayService supportPayService;
     private final RedisService redisService;
     private final RedissonClient redissonClient;
     private final RocketMQTemplate rocketMQTemplate;
     private final ObjectMapper objectMapper;
 
     public String prePay(String orderNo) {
-        // 1. 检查缓存
-        String cacheKey = String.format(SeckillRedisKey.KEY_PAY_QRCODE, orderNo);
-        String cachedQrCode = redisService.get(cacheKey);
-        if (cachedQrCode != null) {
-            return cachedQrCode;
-        }
-
-        // 2. 查询订单（不存在由 base 抛 ORDER_NOT_FOUND）
+        // 1. 查询订单（不存在由 base 抛 ORDER_NOT_FOUND）
         SeckillOrderDTO order = seckillOrderService.getByOrderNo(orderNo);
 
-        // 3. 归属校验：仅订单本人可获取支付码
+        // 2. 归属校验：仅订单本人可获取支付码
+        //    必须先于缓存读取：二维码缓存键不含 userId，缓存命中直达返回会绕过归属校验（越权）
         if (!String.valueOf(order.getUserId()).equals(UserContext.currentUserId())) {
             throw new BizException(ResultEnum.FORBIDDEN);
         }
 
-        // 4. 状态校验：仅待支付订单可发起支付
+        // 3. 状态校验：仅待支付订单可发起支付（同理必须先于缓存，避免已支付/已关闭订单拿到旧码）
         if (order.getOrderStatus() != SeckillOrderStatus.PENDING) {
             throw new BizException(SeckillResultEnum.ORDER_STATUS_NOT_ALLOWED);
+        }
+
+        // 4. 检查缓存
+        String cacheKey = String.format(SeckillRedisKey.KEY_PAY_QRCODE, orderNo);
+        String cachedQrCode = redisService.get(cacheKey);
+        if (cachedQrCode != null) {
+            return cachedQrCode;
         }
 
         // 5. 调用支付渠道预创建

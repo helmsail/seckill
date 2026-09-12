@@ -2,17 +2,22 @@ package com.helmsail.seckill.support.server.order;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.helmsail.seckill.support.api.order.CreateOrderRequest;
+import com.helmsail.seckill.support.api.order.OrderService;
 import lombok.RequiredArgsConstructor;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 /**
- * 订单服务实现
+ * 订单服务实现（Dubbo 暴露）
+ *
+ * retries = 0：写路径不做 Dubbo 层自动重试，重投由调用方（MQ 消费/对账）负责
  */
 @Service
+@DubboService(retries = 0)
 @RequiredArgsConstructor
-public class OrderServiceImpl implements OrderBizService {
+public class OrderServiceImpl implements OrderService {
 
     private final OrderMapper orderMapper;
 

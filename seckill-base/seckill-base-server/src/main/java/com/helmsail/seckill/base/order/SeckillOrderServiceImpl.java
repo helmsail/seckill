@@ -10,15 +10,22 @@ import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import com.helmsail.seckill.common.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 秒杀订单服务实现（Dubbo 暴露）
+ *
+ * retries = 0：本服务含非幂等写操作（创建订单），自动重试会造成重复下单
+ */
 @Slf4j
 @Service
+@DubboService(retries = 0)
 @RequiredArgsConstructor
-public class SeckillOrderServiceImpl implements SeckillOrderBizService {
+public class SeckillOrderServiceImpl implements SeckillOrderService {
 
     private final SeckillOrderMapper seckillOrderMapper;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
@@ -113,7 +120,9 @@ public class SeckillOrderServiceImpl implements SeckillOrderBizService {
         List<SeckillOrder> orders = seckillOrderMapper.selectList(
                 new LambdaQueryWrapper<SeckillOrder>()
                         .eq(SeckillOrder::getOrderStatus, SeckillOrderStatus.PENDING.getCode())
-                        .lt(SeckillOrder::getCreateTime, before)
+                        // create_time 为 NULL（历史脏数据/填充异常）不能落入扫描盲区，一并纳入兜底
+                        .and(w -> w.lt(SeckillOrder::getCreateTime, before)
+                                .or().isNull(SeckillOrder::getCreateTime))
                         .last("LIMIT " + limit));
         return orders.stream().map(SeckillOrder::getOrderNo).toList();
     }

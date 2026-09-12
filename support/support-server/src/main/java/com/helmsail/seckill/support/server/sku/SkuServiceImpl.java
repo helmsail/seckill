@@ -5,18 +5,23 @@ import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
+import com.helmsail.seckill.support.api.sku.SkuService;
 import lombok.RequiredArgsConstructor;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
 
 /**
- * SKU 服务实现
+ * SKU 服务实现（Dubbo 暴露）
+ *
+ * retries = 0：本服务含库存扣减/归还（累加语义、非幂等），自动重试会造成库存错账
  */
 @Service
+@DubboService(retries = 0)
 @RequiredArgsConstructor
-public class SkuServiceImpl implements SkuBizService {
+public class SkuServiceImpl implements SkuService {
 
     private final SkuMapper skuMapper;
 

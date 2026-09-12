@@ -9,19 +9,22 @@ import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
+import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 活动服务实现
+ * 活动服务实现（Dubbo 暴露）
  *
- * 状态规则全部收敛在此：语义化操作 + 矩阵断言 + 条件更新（防并发）
+ * 状态规则全部收敛在此：语义化操作 + 矩阵断言 + 条件更新（防并发）。
+ * retries = 0：本服务含非幂等写操作（创建/删除/状态流转），自动重试会产生重复副作用
  */
 @Service
+@DubboService(retries = 0)
 @RequiredArgsConstructor
-public class ActivityServiceImpl implements ActivityBizService {
+public class ActivityServiceImpl implements ActivityService {
 
     /** 限购上限（sk_activity.purchase_limit 列为 TINYINT） */
     private static final int PURCHASE_LIMIT_MAX = 127;

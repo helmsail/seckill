@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.order;
+package com.helmsail.seckill.service.web;
 
 import com.helmsail.seckill.base.order.SeckillOrderDTO;
 import com.helmsail.seckill.base.order.SeckillOrderPageQuery;

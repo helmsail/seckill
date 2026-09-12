@@ -1,9 +1,9 @@
 package com.helmsail.seckill.gateway.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.gateway.auth.GatewayAuth;
-import com.helmsail.seckill.gateway.result.GatewayError;
-import com.helmsail.seckill.gateway.result.Result;
+import com.helmsail.seckill.gateway.exception.GatewayError;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -54,7 +54,7 @@ public class AuthorizationGlobalFilter implements GlobalFilter, Ordered {
         response.setStatusCode(HttpStatus.FORBIDDEN);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
         try {
-            byte[] bytes = mapper.writeValueAsBytes(Result.fail(GatewayError.FORBIDDEN, "无权限访问"));
+            byte[] bytes = mapper.writeValueAsBytes(Result.of(GatewayError.FORBIDDEN.getCode(), "无权限访问"));
             return response.writeWith(Mono.just(response.bufferFactory().wrap(bytes)));
         } catch (Exception e) {
             return response.setComplete();

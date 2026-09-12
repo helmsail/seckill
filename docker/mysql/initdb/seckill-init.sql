@@ -8,6 +8,9 @@
 -- 内容顺序：建库 → 秒杀域表（sk_*）→ 主域表（t_*）→ 基础数据
 -- ============================================================
 
+-- 客户端字符集：mysql 客户端默认可能为 latin1，中文 UTF-8 字节会被误判超长（Data too long）
+SET NAMES utf8mb4;
+
 -- ---------- 建库 ----------
 -- 业务库（docker compose 场景由 MYSQL_DATABASE 自动创建，此处兼容手工执行）
 CREATE DATABASE IF NOT EXISTS seckill DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

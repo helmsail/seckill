@@ -1,5 +1,6 @@
-package com.helmsail.seckill.gateway.result;
+package com.helmsail.seckill.gateway.exception;
 
+import com.helmsail.seckill.common.result.IResultCode;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -7,10 +8,11 @@ import lombok.Getter;
  * 网关错误码
  *
  * 仅包含网关层面的错误，不涉及业务错误。
+ * 实现 IResultCode，配合 common 的 Result.of(...) 输出统一响应结构。
  */
 @Getter
 @AllArgsConstructor
-public enum GatewayError {
+public enum GatewayError implements IResultCode {
 
     UNAUTHORIZED("unauthorized", "未认证"),
     FORBIDDEN("forbidden", "无权限"),

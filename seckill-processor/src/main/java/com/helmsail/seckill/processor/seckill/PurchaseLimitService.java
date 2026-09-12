@@ -54,10 +54,15 @@ public class PurchaseLimitService {
             "redis.call('expire', KEYS[1], tonumber(ARGV[3])) " +
             "return 1";
 
-    /** 恢复额度（键不存在跳过；下界 0；重置 TTL，避免 set 清除过期时间造成键永驻） */
+    /**
+     * 恢复额度（键不存在跳过；下界 0；重置 TTL，避免 set 清除过期时间造成键永驻）
+     *
+     * 注意：Redis Lua 中 GET 不存在的键返回 false 而非 nil，须用 `not current` 判断，
+     * 否则空键会落到 tonumber(false)→nil 导致算术异常。
+     */
     private static final String RESTORE_LUA =
             "local current = redis.call('get', KEYS[1]) " +
-            "if current == nil then return -1 end " +
+            "if not current then return -1 end " +
             "local target = tonumber(current) - tonumber(ARGV[1]) " +
             "if target < 0 then target = 0 end " +
             "redis.call('set', KEYS[1], target, 'EX', tonumber(ARGV[2])) " +

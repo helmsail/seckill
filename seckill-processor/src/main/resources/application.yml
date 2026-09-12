@@ -20,10 +20,13 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
   consumer:
     check: false
-    # 下单链路含多段远程调用（创单/关单），默认 1s 偏短
+    # 创单为非幂等操作，禁用自动重试防止重复下单；下单链路含多段远程调用（创单/关单），默认 1s 偏短
+    retries: 0
     timeout: 3000
 
 rocketmq:
   name-server: ${ROCKETMQ_ADDR}
   producer:
     group: seckill-producer
+    # 首次向新 topic 发送时 broker 自动创建较慢，默认 3s 易误报超时
+    send-message-timeout: 5000

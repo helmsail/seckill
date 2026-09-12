@@ -3,6 +3,7 @@ package com.helmsail.seckill.base.activity;
 import lombok.Data;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -20,15 +21,19 @@ public class ActivityRequest implements Serializable {
     private String activityName;
 
     /** 开始日期 */
+    @NotNull(message = "开始日期不能为空")
     private LocalDate startDate;
 
     /** 结束日期 */
+    @NotNull(message = "结束日期不能为空")
     private LocalDate endDate;
 
     /** 当天开始时间（禁止跨天，须早于当天结束时间） */
+    @NotNull(message = "开始时间不能为空")
     private LocalTime startTime;
 
     /** 当天结束时间 */
+    @NotNull(message = "结束时间不能为空")
     private LocalTime endTime;
 
     /** 周位图：bit0=周一…bit6=周日（127=每天）；空则默认每天 */
