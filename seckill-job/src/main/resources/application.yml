@@ -22,7 +22,8 @@ dubbo:
     name: seckill-job
     qos-enable: false
   registry:
-    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
+    # namespace 保持 public，隔离靠 group（与 Spring Cloud 的 SECKILL_DISCOVERY 隔离）
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   consumer:
     check: false
     # 任务含库存归还（自增，非幂等）禁用自动重试；冷启动/多段远程调用场景放宽超时

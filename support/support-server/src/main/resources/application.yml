@@ -26,7 +26,8 @@ dubbo:
     name: support-server
     qos-enable: false
   registry:
-    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
+    # namespace 保持 public，隔离靠 group（与 Spring Cloud 的 SECKILL_DISCOVERY 隔离）
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   protocol:
     name: dubbo
     port: 28080

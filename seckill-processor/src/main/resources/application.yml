@@ -17,7 +17,8 @@ dubbo:
     name: seckill-processor
     qos-enable: false
   registry:
-    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
+    # namespace 保持 public，隔离靠 group（与 Spring Cloud 的 SECKILL_DISCOVERY 隔离）
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   consumer:
     check: false
     # 创单为非幂等操作，禁用自动重试防止重复下单；下单链路含多段远程调用（创单/关单），默认 1s 偏短

@@ -10,13 +10,14 @@ spring:
       - optional:file:.env[.properties]
 
   cloud:
+    # ---------- 路由（lb:// 经服务发现解析实例并负载均衡）----------
     gateway:
       server:
         webflux:
           routes:
             # C 端服务
             - id: seckill-service
-              uri: http://${SECKILL_SERVICE_HOST}:18084
+              uri: lb://seckill-service
               predicates:
                 - Path=/api/consumer/**
               filters:
@@ -24,23 +25,37 @@ spring:
 
             # 运营管理端
             - id: seckill-admin
-              uri: http://${SECKILL_ADMIN_HOST}:18082
+              uri: lb://seckill-admin
               predicates:
                 - Path=/api/admin/**
               filters:
                 - StripPrefix=2
 
+    # ---------- Nacos ----------
+    nacos:
+      # 服务发现：仅用于网关 lb:// 解析后端 Web 实例（隔离靠 group，namespace 保持 public）
+      discovery:
+        server-addr: ${NACOS_ADDR}
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
+        group: SECKILL_DISCOVERY
+      # 配置中心（与 Sentinel 规则共用 seckill-sentinel 命名空间）
+      # 注意：不要写 namespace: public（nacos#9418），客户端按字面量查询会读不到配置
+      config:
+        server-addr: ${NACOS_ADDR}
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
+        namespace: seckill-sentinel
+        file-extension: yml
+
+    # ---------- Sentinel 限流 ----------
     sentinel:
       eager: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD_ADDR}
       datasource:
-        # 网关限流规则，从 Nacos 动态读取；规则在 Nacos 界面维护（非本地文件）
-        # 位置：命名空间 seckill-sentinel，dataId=seckill-gateway-gw-flow.json，group=SENTINEL_GROUP
-        # 未配置或拉取失败时，由 GatewayRuleInitializer 装载兜底规则，限流不失效
-        # 注意两点：
-        #   1) 不要写 namespace: public —— 客户端按字面量查询会读不到配置（nacos#9418）；
-        #   2) nacos-client 3.x 连 2.x 服务端时默认命名空间读取异常（SCA#4098），必须使用自定义命名空间
+        # 规则在 Nacos 界面维护（非本地文件）：namespace=seckill-sentinel，dataId=seckill-gateway-gw-flow.json，group=SENTINEL_GROUP
+        # 拉取失败时由 GatewayRuleInitializer 装载兜底规则，限流不失效
         gw-flow:
           nacos:
             server-addr: ${NACOS_ADDR}
@@ -52,16 +67,7 @@ spring:
             data-type: json
             rule-type: gw-flow
 
-    # Nacos 配置中心（与 Sentinel 规则共用自定义命名空间；nacos-client 3.x + server 2.x 下默认命名空间不可用）
-    nacos:
-      config:
-        server-addr: ${NACOS_ADDR}
-        username: ${NACOS_USERNAME}
-        password: ${NACOS_PASSWORD}
-        namespace: seckill-sentinel
-        file-extension: yml
-
-# JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）
+# ---------- JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）----------
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION}

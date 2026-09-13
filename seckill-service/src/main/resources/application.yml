@@ -7,6 +7,14 @@ spring:
   config:
     import:
       - optional:file:.env[.properties]
+  # Spring Cloud 服务发现（供网关 lb:// 解析实例）；namespace 保持 public，隔离靠 group
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR}
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
+        group: SECKILL_DISCOVERY
   data:
     redis:
       host: ${REDIS_HOST}
@@ -17,7 +25,8 @@ dubbo:
     name: seckill-service
     qos-enable: false
   registry:
-    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}
+    # namespace 保持 public，隔离靠 group（与 Spring Cloud 的 SECKILL_DISCOVERY 隔离）
+    address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   consumer:
     check: false
     # 下单/支付链路含多段远程调用，默认 1s 偏短
