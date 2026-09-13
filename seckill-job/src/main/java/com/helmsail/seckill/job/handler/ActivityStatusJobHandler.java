@@ -8,12 +8,14 @@ import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 活动状态变更任务
+ * 活动状态流转任务
  *
- * 将待开始的活动状态修改为进行中。
+ * 按时间推动活动状态机相邻两段：待开始到点激活（PENDING → ACTIVE）、进行中/已暂停到点关闭（ACTIVE、PAUSED → CLOSED）。
+ * 同轮先激活后关闭：刚激活即到期的活动一轮内走完；单活动失败隔离，下轮自愈。
  */
 @Slf4j
 @Component
@@ -25,8 +27,21 @@ public class ActivityStatusJobHandler {
 
     @XxlJob("activityStatusJob")
     public void execute() {
-        log.info("活动状态变更任务启动");
+        log.info("活动状态流转任务启动");
 
+        // 激活——待开始到点转进行中
+        int activated = activatePending();
+
+        // 关闭——进行中/已暂停到点转已关闭
+        int closed = closeExpired();
+
+        log.info("活动状态流转任务完成: 激活={}, 关闭={}", activated, closed);
+    }
+
+    /**
+     * 激活——PENDING 开始时间已到 → ACTIVE
+     */
+    private int activatePending() {
         List<ActivityDTO> pendingActivities = activityService.listByStatus(ActivityStatus.PENDING);
         LocalDateTime now = LocalDateTime.now();
         int activated = 0;
@@ -43,7 +58,34 @@ public class ActivityStatusJobHandler {
                 }
             }
         }
+        return activated;
+    }
 
-        log.info("活动状态变更任务完成，共激活 {} 个活动", activated);
+    /**
+     * 关闭——ACTIVE/PAUSED 结束时间已过 → CLOSED
+     *
+     * 段内重新拉取，能兜住同轮刚激活即到期的活动；不查 PENDING（由激活段先行流转）。
+     */
+    private int closeExpired() {
+        List<ActivityDTO> activities = new ArrayList<>();
+        activities.addAll(activityService.listByStatus(ActivityStatus.ACTIVE));
+        activities.addAll(activityService.listByStatus(ActivityStatus.PAUSED));
+
+        LocalDateTime now = LocalDateTime.now();
+        int closed = 0;
+
+        for (ActivityDTO activity : activities) {
+            LocalDateTime closeMoment = LocalDateTime.of(activity.getEndDate(), activity.getEndTime());
+            if (now.isAfter(closeMoment)) {
+                try {
+                    activityService.close(activity.getActivityNo());
+                    closed++;
+                    log.info("活动已关闭: activityNo={}", activity.getActivityNo());
+                } catch (Exception e) {
+                    log.error("活动关闭失败: activityNo={}", activity.getActivityNo(), e);
+                }
+            }
+        }
+        return closed;
     }
 }

@@ -1,7 +1,6 @@
 package com.helmsail.seckill.base.order;
 
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.result.PageResult;
 
 import java.util.List;
 
@@ -26,11 +25,6 @@ public interface SeckillOrderService {
      * 供调用方做幂等查证：不存在返回 null（非错误语义）
      */
     SeckillOrderDTO getByTraceId(Long userId, String traceId) throws BizException;
-
-    /**
-     * 使用用户 ID 查找订单（分页）
-     */
-    PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query) throws BizException;
 
     /**
      * 订单支付成功

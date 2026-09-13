@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.support;
+package com.helmsail.seckill.service.cache;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -52,11 +52,14 @@ public class CaffeineCache<V> {
 
                     @Override
                     public V reload(String key, V oldValue) {
-                        return loadFromRedis(key);
+                        // 刷新只对齐 Redis：Redis 已无该键（被回收/清理）时返回 null，条目随之移除，
+                        // 下次访问退回 load 全链（含回源兜底）；空值占位符也借此自清。
+                        return redisLoader.apply(key);
                     }
                 });
     }
 
+    @SuppressWarnings("unchecked")
     private V loadWithFallback(String key) {
         V value = redisLoader.apply(key);
         if (value != null) {
@@ -69,11 +72,6 @@ public class CaffeineCache<V> {
         return fallbackValue;
     }
 
-    private V loadFromRedis(String key) {
-        return redisLoader.apply(key);
-    }
-
-    @SuppressWarnings("unchecked")
     public V get(String key) {
         V value = cache.get(key);
         if (NULL_PLACEHOLDER.equals(value)) {

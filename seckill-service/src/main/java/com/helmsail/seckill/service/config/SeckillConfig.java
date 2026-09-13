@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.support;
+package com.helmsail.seckill.service.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

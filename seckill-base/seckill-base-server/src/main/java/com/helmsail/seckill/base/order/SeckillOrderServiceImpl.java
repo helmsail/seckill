@@ -2,12 +2,10 @@ package com.helmsail.seckill.base.order;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
-import com.helmsail.seckill.common.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -78,19 +76,6 @@ public class SeckillOrderServiceImpl implements SeckillOrderService {
                 .eq(SeckillOrder::getUserId, userId)
                 .eq(SeckillOrder::getTraceId, traceId));
         return order == null ? null : toDTO(order);
-    }
-
-    @Override
-    public PageResult<SeckillOrderDTO> pageByUserId(SeckillOrderPageQuery query) {
-        Page<SeckillOrder> page = new Page<>(query.getPageNum(), query.getPageSize());
-        seckillOrderMapper.selectPage(page,
-                new LambdaQueryWrapper<SeckillOrder>()
-                        .eq(SeckillOrder::getUserId, query.getUserId())
-                        .orderByDesc(SeckillOrder::getCreateTime)
-                        .orderByDesc(SeckillOrder::getId));
-        return new PageResult<>(
-                page.getRecords().stream().map(this::toDTO).toList(),
-                page.getTotal(), page.getCurrent(), page.getSize());
     }
 
     @Override

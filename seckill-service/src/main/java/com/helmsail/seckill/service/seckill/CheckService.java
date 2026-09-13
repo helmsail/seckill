@@ -6,7 +6,7 @@ import com.helmsail.seckill.base.activity.ActivityWindows;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.service.activity.ActivityQueryService;
-import com.helmsail.seckill.service.support.SeckillConfig;
+import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RRateLimiter;

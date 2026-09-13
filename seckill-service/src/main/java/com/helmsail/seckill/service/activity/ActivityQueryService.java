@@ -11,7 +11,7 @@ import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.service.support.CaffeineCache;
+import com.helmsail.seckill.service.cache.CaffeineCache;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +42,9 @@ public class ActivityQueryService {
 
     private final RedisService redisService;
     private final ObjectMapper objectMapper;
+
+    /** 列表缓存条目的键：列表全局唯一，key 仅作条目索引占位 */
+    private static final String LIST_CACHE_KEY = "list";
 
     private CaffeineCache<List<ActivityDTO>> activityListCache;
     private CaffeineCache<ActivityDTO> activityInfoCache;
@@ -82,7 +85,7 @@ public class ActivityQueryService {
             return activityService.getByActivityNo(key);
         } catch (Exception e) {
             // 活动不存在：返回 null 走空值缓存（穿透保护），准入检查按“不存在”处理。
-            // 注意：Caffeine 会将 loader 异常包装为 CompletionException，需沿 cause 链识别 BizException
+            // DubboConsumerExceptionFilter 已还原业务异常；此处再沿 cause 链兜底运行时/代理的再包装
             BizException bizException = findBizException(e);
             if (bizException != null
                     && SeckillResultEnum.ACTIVITY_NOT_FOUND.getCode().equals(bizException.getCode())) {
@@ -113,7 +116,17 @@ public class ActivityQueryService {
     }
 
     private List<SeckillProductSkuDTO> fallbackProductList(String activityNo) {
-        return seckillProductSkuService.listByActivityNo(activityNo);
+        List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
+        if (rows == null || rows.isEmpty()) {
+            return rows;
+        }
+        // 与快照同口径：剔除库表带出的库存配额与上下架，DB 运行态值不进缓存
+        // （二者由独立 key 承担，查询时统一从 key 拼装）
+        for (SeckillProductSkuDTO row : rows) {
+            row.setActivityStock(null);
+            row.setShelfStatus(null);
+        }
+        return rows;
     }
 
     private <T> T parse(String json, Class<T> clazz) {
@@ -137,7 +150,7 @@ public class ActivityQueryService {
     }
 
     public List<ActivityDTO> listActivities() {
-        return activityListCache.get("list");
+        return activityListCache.get(LIST_CACHE_KEY);
     }
 
     public ActivityDTO getActivityByNo(String activityNo) {
