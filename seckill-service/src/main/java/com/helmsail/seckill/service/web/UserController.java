@@ -17,8 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class UserController {
 
-    /** 登录/注册为写路径，禁用 Dubbo 自动重试（重试可能重复写入） */
-    @DubboReference(retries = 0)
+    @DubboReference
     private UserService userService;
 
     /**

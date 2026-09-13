@@ -30,10 +30,10 @@ public final class GatewayAuth {
      */
     private static final List<String> WHITELIST = List.of(
             "/api/admin/user/login",
-            "/api/consumer/user/login",
-            "/api/consumer/activity/**",
+            "/api/c/user/login",
+            "/api/c/activity/**",
             // 支付渠道异步通知（由渠道验签守卫，无用户 JWT）
-            "/api/consumer/pay/callback"
+            "/api/c/pay/callback"
     );
 
     /** 共享路径匹配器（AntPathMatcher 线程安全，全局单例复用） */

@@ -19,7 +19,7 @@ spring:
             - id: seckill-service
               uri: lb://seckill-service
               predicates:
-                - Path=/api/consumer/**
+                - Path=/api/c/**
               filters:
                 - StripPrefix=2
 
