@@ -41,7 +41,4 @@ public class ActivityRequest implements Serializable {
 
     /** 每人限购数量（0=不限购） */
     private Integer purchaseLimit;
-
-    /** 备注 */
-    private String remark;
 }

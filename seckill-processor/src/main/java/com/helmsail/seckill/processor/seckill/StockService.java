@@ -29,8 +29,7 @@ public class StockService {
 
     public void restore(String activityNo, String skuNo, int quantity) {
         String key = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, skuNo);
-        String totalKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_TOTAL, activityNo, skuNo);
-        redisService.executeLua(RESTORE_LUA, List.of(key, totalKey), String.valueOf(quantity));
+        redisService.executeLua(RESTORE_LUA, List.of(key), String.valueOf(quantity));
     }
 
     private static final String DEDUCT_LUA =
@@ -43,10 +42,6 @@ public class StockService {
 
     private static final String RESTORE_LUA =
             "local current = tonumber(redis.call('get', KEYS[1])) or 0 " +
-            "local quantity = tonumber(ARGV[1]) " +
-            "local target = current + quantity " +
-            "local total = tonumber(redis.call('get', KEYS[2])) " +
-            "if total ~= nil and target > total then return 0 end " +
-            "redis.call('set', KEYS[1], target) " +
+            "redis.call('set', KEYS[1], current + tonumber(ARGV[1])) " +
             "return 1";
 }

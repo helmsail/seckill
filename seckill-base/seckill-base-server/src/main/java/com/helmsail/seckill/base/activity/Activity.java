@@ -26,5 +26,4 @@ public class Activity extends BaseEntity {
     private Integer weekBitmap;
     private Integer purchaseLimit;
     private Integer activityStatus;
-    private String remark;
 }

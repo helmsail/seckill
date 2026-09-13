@@ -10,7 +10,7 @@
 
     <artifactId>seckill-job</artifactId>
     <name>seckill-job</name>
-    <description>秒杀系统任务调度模块（XXL-Job Admin + Executor）</description>
+    <description>秒杀系统任务调度模块（XXL-Job Executor）</description>
 
     <dependencies>
         <dependency>

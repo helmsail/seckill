@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * XXL-Job 配置
+ * XXL-Job 执行器装配（accessToken 与 admin 端保持一致，均为空）
  */
 @Configuration
 public class XxlJobConfig {

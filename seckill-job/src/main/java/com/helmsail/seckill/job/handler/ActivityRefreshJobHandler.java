@@ -131,7 +131,6 @@ public class ActivityRefreshJobHandler {
         List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
         for (SeckillProductSkuDTO row : rows) {
             String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
-            String totalKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_TOTAL, activityNo, row.getSkuNo());
             String restoredKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_RESTORED, activityNo, row.getSkuNo());
             // 已处理过的 SKU 幂等跳过
             if (redisService.get(restoredKey) != null) {
@@ -169,9 +168,8 @@ public class ActivityRefreshJobHandler {
                     continue;
                 }
             }
-            // 处理完成：写幂等标记并清理初始总量键
+            // 处理完成：写幂等标记
             redisService.set(restoredKey, "1");
-            redisService.delete(totalKey);
         }
     }
 

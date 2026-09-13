@@ -4,12 +4,14 @@ package com.helmsail.seckill.base.redis;
  * 秒杀域 Redis Key 常量（唯一权威清单）
  *
  * 命名规范：seckill:{域}:{对象}[:{标识}...]
+ * 分组顺序即业务生命周期：活动快照 → 库存计数 → 用户准入 → 秒杀结果 → 支付 → 补偿
+ * 全项目统一经本清单引用，禁止散落字符串硬编码
  */
 public final class SeckillRedisKey {
 
     private SeckillRedisKey() {}
 
-    // ========== 活动 ==========
+    // ========== 活动快照（预热写入，C 端查询读取；终态由刷新任务清理） ==========
 
     /** 活动信息 Hash（field=activityNo） */
     public static final String KEY_ACTIVITY_INFO = "seckill:activity:info";
@@ -20,18 +22,15 @@ public final class SeckillRedisKey {
     /** 活动在售 SKU 名单（SET，成员=上架 skuNo；标识：activityNo） */
     public static final String KEY_ACTIVITY_SHELF = "seckill:activity:shelf:%s";
 
-    // ========== 库存（运行期权威计数） ==========
+    // ========== 库存计数（运行期权威：预热初始化，扣减 / 回补 / 终态归还） ==========
 
-    /** SKU 库存计数（标识：activityNo:skuNo） */
+    /** SKU 库存计数（预热初始化，运行期扣减 / 回补；标识：activityNo:skuNo） */
     public static final String KEY_SKU_STOCK = "seckill:sku:stock:%s:%s";
-
-    /** SKU 库存初始总量（restore 上界参照，预热写入后不再变更；标识：activityNo:skuNo） */
-    public static final String KEY_SKU_STOCK_TOTAL = "seckill:sku:stock:total:%s:%s";
 
     /** SKU 库存归还完成标记（终态清理跨轮幂等依据，写入后长期保留；标识：activityNo:skuNo） */
     public static final String KEY_SKU_STOCK_RESTORED = "seckill:sku:stock:restored:%s:%s";
 
-    // ========== 限流 / 限购 / 黑名单 ==========
+    // ========== 用户准入（限流 / 限购 / 黑名单） ==========
 
     /** 用户级限流（标识：userId） */
     public static final String KEY_RATE_LIMIT = "seckill:limit:rate:%s";
@@ -42,12 +41,12 @@ public final class SeckillRedisKey {
     /** 用户黑名单（标识：userId） */
     public static final String KEY_BLACKLIST = "seckill:blacklist:%s";
 
-    // ========== 秒杀结果 ==========
+    // ========== 秒杀结果（processor 回写，C 端轮询读取） ==========
 
     /** 秒杀结果（标识：traceId） */
     public static final String KEY_SECKILL_RESULT = "seckill:result:%s";
 
-    // ========== 支付 ==========
+    // ========== 支付（二维码缓存 / 回调锁） ==========
 
     /** 支付二维码缓存（标识：orderNo） */
     public static final String KEY_PAY_QRCODE = "seckill:pay:qrcode:%s";
@@ -55,10 +54,7 @@ public final class SeckillRedisKey {
     /** 支付回调处理锁（标识：orderNo） */
     public static final String KEY_PAY_LOCK = "seckill:pay:lock:%s";
 
-    // ========== 故障落档 / 补偿（运维兜底） ==========
-
-    /** 系统异常落档（标识：traceId）：技术异常导致秒杀失败时保留 30 天，供排查/对账 */
-    public static final String KEY_SECKILL_FAIL_SYSTEM = "seckill:fail:system:%s";
+    // ========== 补偿（运维兜底：pending 待消费，failed 转人工） ==========
 
     /** 待补偿库存归还（Hash，field=类型:活动:SKU，value=JSON 明细；compensationJob 消费） */
     public static final String KEY_COMPENSATION_PENDING = "seckill:compensation:pending";

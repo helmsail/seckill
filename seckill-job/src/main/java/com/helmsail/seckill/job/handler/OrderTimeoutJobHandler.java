@@ -2,11 +2,13 @@ package com.helmsail.seckill.job.handler;
 
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.SeckillOrderService;
+import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.messaging.Message;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -43,7 +45,9 @@ public class OrderTimeoutJobHandler {
         int sent = 0;
         for (String orderNo : orderNos) {
             try {
-                rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, orderNo);
+                // 携带链路信息：traceId 透传至关单消费链路
+                Message<String> message = BaggageUtils.buildMessage(orderNo);
+                rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message);
                 sent++;
             } catch (Exception e) {
                 log.error("补发关单消息失败: orderNo={}", orderNo, e);

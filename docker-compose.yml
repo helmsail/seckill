@@ -195,6 +195,8 @@ services:
         condition: service_healthy
       rocketmq-namesrv:
         condition: service_started
+      xxl-job-admin:
+        condition: service_started
     ports:
       - "18083:18083"
 

@@ -24,5 +24,4 @@ public class ActivityDTO implements Serializable {
     private Integer weekBitmap;
     private Integer purchaseLimit;
     private ActivityStatus activityStatus;
-    private String remark;
 }

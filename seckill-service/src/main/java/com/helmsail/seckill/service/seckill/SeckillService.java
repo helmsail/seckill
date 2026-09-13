@@ -10,6 +10,7 @@ import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.common.tracing.BaggageKeys;
+import com.helmsail.seckill.common.tracing.TraceIdGenerator;
 import com.helmsail.seckill.common.tracing.UserContext;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import lombok.RequiredArgsConstructor;
@@ -18,8 +19,6 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.slf4j.MDC;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
 
 /**
  * 秒杀编排服务
@@ -43,8 +42,9 @@ public class SeckillService {
         String skuNo = request.getSkuNo();
         String traceId = MDC.get(BaggageKeys.TRACE_ID);
         if (traceId == null || traceId.isBlank()) {
-            // 兜底：绕过网关直连时无 traceId，生成临时值保证结果键唯一
-            traceId = UUID.randomUUID().toString().replace("-", "");
+            // 兜底：绕过网关直连时无 traceId，生成后写入 MDC，保证结果键唯一且日志与 MQ 透传一致
+            traceId = TraceIdGenerator.generate();
+            MDC.put(BaggageKeys.TRACE_ID, traceId);
         }
 
         if (!checkService.checkRateLimit(userId)) {

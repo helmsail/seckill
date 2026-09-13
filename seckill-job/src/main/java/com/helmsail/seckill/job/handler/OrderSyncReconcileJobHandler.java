@@ -5,12 +5,14 @@ import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.SeckillOrderDTO;
 import com.helmsail.seckill.base.order.SeckillOrderService;
 import com.helmsail.seckill.base.order.SeckillOrderSyncEvent;
+import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.helmsail.seckill.support.api.order.OrderService;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.messaging.Message;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
@@ -65,7 +67,9 @@ public class OrderSyncReconcileJobHandler {
                 SeckillOrderSyncEvent event = new SeckillOrderSyncEvent(
                         order.getOrderNo(), order.getUserId(), order.getTotalAmount(),
                         order.getPayAmount(), order.getPaidTime(), order.getTradeNo());
-                rocketMQTemplate.syncSend(MqTopic.ORDER_SYNC, objectMapper.writeValueAsString(event));
+                // 携带链路信息：traceId 透传至主域同步消费链路
+                Message<String> message = BaggageUtils.buildMessage(objectMapper.writeValueAsString(event));
+                rocketMQTemplate.syncSend(MqTopic.ORDER_SYNC, message);
                 resent++;
                 log.warn("订单同步漏账补发: orderNo={}", order.getOrderNo());
             } catch (Exception e) {

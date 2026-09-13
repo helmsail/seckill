@@ -14,7 +14,7 @@ SET NAMES utf8mb4;
 -- ---------- 建库 ----------
 -- 业务库（docker compose 场景由 MYSQL_DATABASE 自动创建，此处兼容手工执行）
 CREATE DATABASE IF NOT EXISTS seckill DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
--- 调度库（xxl-job 表结构由同目录 xxl-job-init.sql 自动导入，无需手工操作；默认登录账号 admin/123456）
+-- 调度库（xxl-job 表结构见同目录 xxl-job-base.sql、调度规则见 xxl-job-init.sql，均自动导入，无需手工操作；默认登录账号 admin/123456）
 CREATE DATABASE IF NOT EXISTS xxl_job DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE seckill;
@@ -32,7 +32,6 @@ CREATE TABLE IF NOT EXISTS sk_activity (
     week_bitmap TINYINT NOT NULL DEFAULT 127 COMMENT '周位图：bit0=周一…bit6=周日（127=每天；21=周一/三/五）',
     purchase_limit TINYINT NOT NULL DEFAULT 0 COMMENT '每人限购数量，0=不限购',
     activity_status TINYINT NOT NULL DEFAULT 0 COMMENT '活动状态：0=待开始，1=进行中，2=已暂停，3=已关闭',
-    remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     is_deleted TINYINT DEFAULT 0 COMMENT '逻辑删除：0=未删除，1=已删除',

@@ -47,7 +47,6 @@ public class ActivityServiceImpl implements ActivityService {
         activity.setWeekBitmap(request.getWeekBitmap() == null ? WeekBitmap.ALL : request.getWeekBitmap());
         activity.setPurchaseLimit(request.getPurchaseLimit() == null ? 0 : request.getPurchaseLimit());
         activity.setActivityStatus(ActivityStatus.PENDING.getCode());
-        activity.setRemark(request.getRemark());
         activityMapper.insert(activity);
         return activity.getActivityNo();
     }
@@ -99,7 +98,6 @@ public class ActivityServiceImpl implements ActivityService {
         activity.setEndTime(request.getEndTime());
         activity.setWeekBitmap(request.getWeekBitmap() == null ? WeekBitmap.ALL : request.getWeekBitmap());
         activity.setPurchaseLimit(request.getPurchaseLimit() == null ? 0 : request.getPurchaseLimit());
-        activity.setRemark(request.getRemark());
         int rows = activityMapper.update(activity, new LambdaUpdateWrapper<Activity>()
                 .eq(Activity::getActivityNo, activityNo)
                 .eq(Activity::getActivityStatus, ActivityStatus.PENDING.getCode()));
@@ -210,7 +208,6 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setWeekBitmap(activity.getWeekBitmap());
         dto.setPurchaseLimit(activity.getPurchaseLimit());
         dto.setActivityStatus(ActivityStatus.byCode(activity.getActivityStatus()));
-        dto.setRemark(activity.getRemark());
         return dto;
     }
 }
