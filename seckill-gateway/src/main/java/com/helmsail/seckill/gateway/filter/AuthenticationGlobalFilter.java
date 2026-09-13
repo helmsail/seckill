@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.common.jwt.JwtClaims;
 import com.helmsail.seckill.common.jwt.JwtUtils;
 import com.helmsail.seckill.common.result.Result;
+import com.helmsail.seckill.common.tracing.BaggageKeys;
+import com.helmsail.seckill.common.user.Role;
 import com.helmsail.seckill.gateway.auth.GatewayAuth;
 import com.helmsail.seckill.gateway.exception.GatewayError;
+import com.helmsail.seckill.gateway.exception.GatewayResponseWriter;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,9 +16,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -31,12 +32,11 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
-    private static final String HEADER_USER_ID = "userId";
     private static final String HEADER_AUTHORIZATION = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtUtils jwtUtils;
-    private final ObjectMapper mapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -56,11 +56,12 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
         String token = authHeader.substring(BEARER_PREFIX.length());
         String userId;
-        String role;
+        Role role;
         try {
             Claims claims = jwtUtils.parseToken(token);
             userId = claims.get(JwtClaims.USER_ID, String.class);
-            role = claims.get(JwtClaims.ROLE, String.class);
+            // JWT 中角色为字符串码，未知值解析为 null（授权时按安全默认拒绝）
+            role = Role.fromCode(claims.get(JwtClaims.ROLE, String.class));
         } catch (Exception e) {
             log.warn("JWT 解析失败: {}", e.getMessage());
             return unauthorized(exchange, GatewayError.UNAUTHORIZED, "认证令牌无效");
@@ -73,28 +74,23 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         // 认证上下文：角色放入 exchange 属性，供授权过滤器读取
         exchange.getAttributes().put(GatewayAuth.ATTR_ROLE, role);
 
-        // 清理 + 设置 userId
+        // 清理 + 设置 userId（键名以 common 的 BaggageKeys 为准，与后端 HttpBaggageFilter 一致）
         ServerHttpRequest mutatedRequest = request.mutate()
                 .headers(headers -> {
                     headers.remove(HEADER_AUTHORIZATION);
-                    headers.remove(HEADER_USER_ID);
-                    headers.add(HEADER_USER_ID, userId);
+                    headers.remove(BaggageKeys.USER_ID);
+                    headers.add(BaggageKeys.USER_ID, userId);
                 })
                 .build();
 
-        return chain.filter(exchange.mutate().request(mutatedRequest).build());
+        // 写入 Reactor Context：配合 enableAutomaticContextPropagation，自动同步到 MDC 供日志输出
+        return chain.filter(exchange.mutate().request(mutatedRequest).build())
+                .contextWrite(ctx -> ctx.put(BaggageKeys.USER_ID, userId));
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, GatewayError error, String message) {
-        ServerHttpResponse response = exchange.getResponse();
-        response.setStatusCode(HttpStatus.UNAUTHORIZED);
-        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        try {
-            byte[] bytes = mapper.writeValueAsBytes(Result.of(error.getCode(), message));
-            return response.writeWith(Mono.just(response.bufferFactory().wrap(bytes)));
-        } catch (Exception e) {
-            return response.setComplete();
-        }
+        return GatewayResponseWriter.write(exchange, objectMapper, HttpStatus.UNAUTHORIZED,
+                Result.of(error.getCode(), message));
     }
 
     @Override

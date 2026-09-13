@@ -9,13 +9,10 @@ import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
-
-
 
 /**
  * 网关全局异常处理
@@ -49,24 +46,18 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
         Result<Void> result;
 
         if (ex instanceof ResponseStatusException rse) {
+            // 保留原始状态码（如 404 路径不存在、503 下游不可用）
             httpStatus = HttpStatus.valueOf(rse.getStatusCode().value());
-            String message = rse.getReason() != null ? rse.getReason() : "请求处理失败";
-            result = Result.of(GatewayError.BAD_GATEWAY.getCode(), message);
+            GatewayError error = httpStatus == HttpStatus.NOT_FOUND
+                    ? GatewayError.NOT_FOUND : GatewayError.BAD_GATEWAY;
+            String message = rse.getReason() != null ? rse.getReason() : error.getMessage();
+            result = Result.of(error.getCode(), message);
         } else {
             httpStatus = HttpStatus.BAD_GATEWAY;
             result = Result.of(GatewayError.BAD_GATEWAY);
             log.error("网关异常: path={}, error={}", exchange.getRequest().getURI().getPath(), ex.getMessage(), ex);
         }
 
-        exchange.getResponse().setStatusCode(httpStatus);
-        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-
-        try {
-            byte[] bytes = objectMapper.writeValueAsBytes(result);
-            return exchange.getResponse().writeWith(
-                    Mono.just(exchange.getResponse().bufferFactory().wrap(bytes)));
-        } catch (Exception e) {
-            return Mono.error(e);
-        }
+        return GatewayResponseWriter.write(exchange, objectMapper, httpStatus, result);
     }
 }

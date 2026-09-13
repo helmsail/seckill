@@ -5,6 +5,7 @@ import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.jwt.JwtClaims;
 import com.helmsail.seckill.common.jwt.JwtUtils;
 import com.helmsail.seckill.common.result.ResultEnum;
+import com.helmsail.seckill.common.user.Role;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.user.LoginRequest;
 import com.helmsail.seckill.support.api.user.LoginResponse;
@@ -47,7 +48,7 @@ public class UserServiceImpl implements UserService {
         String token = jwtUtils.generateToken(Map.of(
                 JwtClaims.USER_ID, String.valueOf(user.getId()),
                 JwtClaims.USERNAME, user.getUsername(),
-                JwtClaims.ROLE, String.valueOf(user.getRole())));
+                JwtClaims.ROLE, Role.byCode(user.getRole()).getClaimValue()));
         return new LoginResponse(token, dto);
     }
 }

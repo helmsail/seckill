@@ -5,5 +5,4 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY target/*.jar app.jar
 ENV TZ=Asia/Shanghai
-EXPOSE 18086 28080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

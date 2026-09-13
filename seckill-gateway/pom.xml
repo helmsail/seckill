@@ -19,7 +19,7 @@
             <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
         </dependency>
 
-        <!-- 公共技术底座（JwtUtils 等，webmvc/webflux 均为 optional 不传递） -->
+        <!-- 公共技术底座（JwtUtils、Result、BaggageKeys 等；Web 相关依赖均为 optional，不向下传递） -->
         <dependency>
             <groupId>com.helmsail</groupId>
             <artifactId>seckill-common</artifactId>

@@ -2,18 +2,17 @@ package com.helmsail.seckill.gateway.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.common.result.Result;
+import com.helmsail.seckill.common.user.Role;
 import com.helmsail.seckill.gateway.auth.GatewayAuth;
 import com.helmsail.seckill.gateway.exception.GatewayError;
+import com.helmsail.seckill.gateway.exception.GatewayResponseWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
-import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
@@ -29,36 +28,22 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class AuthorizationGlobalFilter implements GlobalFilter, Ordered {
 
-    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
-    private static final String ADMIN_PATH = "/api/admin/**";
-
-    private final ObjectMapper mapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
 
-        if (PATH_MATCHER.match(ADMIN_PATH, path) && !GatewayAuth.isWhiteListed(path)) {
-            String role = exchange.getAttribute(GatewayAuth.ATTR_ROLE);
-            if (!GatewayAuth.ROLE_OPERATOR.equals(role)) {
+        if (GatewayAuth.isAdminPath(path) && !GatewayAuth.isWhiteListed(path)) {
+            Role role = exchange.getAttribute(GatewayAuth.ATTR_ROLE);
+            if (GatewayAuth.ADMIN_ROLE != role) {
                 log.warn("无权限访问: path={}, role={}", path, role);
-                return forbidden(exchange);
+                return GatewayResponseWriter.write(exchange, objectMapper, HttpStatus.FORBIDDEN,
+                        Result.of(GatewayError.FORBIDDEN.getCode(), "无权限访问"));
             }
         }
 
         return chain.filter(exchange);
-    }
-
-    private Mono<Void> forbidden(ServerWebExchange exchange) {
-        ServerHttpResponse response = exchange.getResponse();
-        response.setStatusCode(HttpStatus.FORBIDDEN);
-        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        try {
-            byte[] bytes = mapper.writeValueAsBytes(Result.of(GatewayError.FORBIDDEN.getCode(), "无权限访问"));
-            return response.writeWith(Mono.just(response.bufferFactory().wrap(bytes)));
-        } catch (Exception e) {
-            return response.setComplete();
-        }
     }
 
     @Override

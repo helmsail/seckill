@@ -147,6 +147,8 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      sentinel-dashboard:
+        condition: service_started
     ports:
       - "18080:18080"
 
