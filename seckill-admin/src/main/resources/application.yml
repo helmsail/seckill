@@ -29,6 +29,6 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   consumer:
     check: false
-    # 写编排（活动创建/划拨等非幂等操作）禁用自动重试，防止重复写入；默认 1s 超时偏短故放宽
-    retries: 0
+    # 重试不设全局默认，逐引用按读写性质在 @DubboReference(retries = n) 上显式声明
+    # 默认 1s 超时偏短故放宽
     timeout: 3000

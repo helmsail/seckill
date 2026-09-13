@@ -29,6 +29,7 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   consumer:
     check: false
+    # 重试不设全局默认，逐引用按读写性质在 @DubboReference(retries = n) 上显式声明
     # 下单/支付链路含多段远程调用，默认 1s 偏短
     timeout: 3000
 

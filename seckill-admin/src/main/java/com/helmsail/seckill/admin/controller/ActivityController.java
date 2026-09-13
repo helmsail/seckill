@@ -24,7 +24,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ActivityController {
 
-    @DubboReference
+    /** 读写混合：写操作（create/delete/update/状态流转）非幂等，禁用自动重试 */
+    @DubboReference(retries = 0)
     private ActivityService activityService;
 
     @DubboReference

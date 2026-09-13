@@ -24,10 +24,11 @@ import java.util.stream.Collectors;
  * 活动商品SKU服务实现（Dubbo 暴露）
  *
  * 状态规则收敛在此：添加/删除仅待开始；上架/下架非终态可用。
- * retries = 0：本服务含非幂等写操作（批量增删/上下架），自动重试会产生重复副作用
+ * 本服务含非幂等写操作（批量增删/上下架），消费方须禁用自动重试
+ * （Dubbo 重试由 Consumer 决定，Provider 侧 retries 不生效）。
  */
 @Service
-@DubboService(retries = 0)
+@DubboService
 @RequiredArgsConstructor
 public class SeckillProductSkuServiceImpl implements SeckillProductSkuService {
 

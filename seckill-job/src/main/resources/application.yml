@@ -26,8 +26,8 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   consumer:
     check: false
-    # 任务含库存归还（自增，非幂等）禁用自动重试；冷启动/多段远程调用场景放宽超时
-    retries: 0
+    # 重试不设全局默认，逐引用按读写性质在 @DubboReference(retries = n) 上显式声明
+    # 冷启动/多段远程调用场景放宽超时
     timeout: 5000
 
 rocketmq:

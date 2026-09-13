@@ -19,10 +19,11 @@ import java.util.List;
  * 活动服务实现（Dubbo 暴露）
  *
  * 状态规则全部收敛在此：语义化操作 + 矩阵断言 + 条件更新（防并发）。
- * retries = 0：本服务含非幂等写操作（创建/删除/状态流转），自动重试会产生重复副作用
+ * 本服务含非幂等写操作（创建/删除/状态流转），消费方须禁用自动重试
+ * （Dubbo 重试由 Consumer 决定，Provider 侧 retries 不生效）。
  */
 @Service
-@DubboService(retries = 0)
+@DubboService
 @RequiredArgsConstructor
 public class ActivityServiceImpl implements ActivityService {
 

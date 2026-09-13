@@ -20,12 +20,13 @@ import java.util.List;
 /**
  * 秒杀订单服务实现（Dubbo 暴露）
  *
- * retries = 0：写路径不做自动重试（保持调用语义确定）；
- * 创建订单已按 traceId 幂等（uk_user_trace 唯一约束，重复落库时返回已建订单号）。
+ * 写路径不做自动重试（保持调用语义确定）；创建订单已按 traceId 幂等
+ * （uk_user_trace 唯一约束，重复落库时返回已建订单号）。
+ * 消费方须禁用自动重试（Dubbo 重试由 Consumer 决定，Provider 侧 retries 不生效）。
  */
 @Slf4j
 @Service
-@DubboService(retries = 0)
+@DubboService
 @RequiredArgsConstructor
 public class SeckillOrderServiceImpl implements SeckillOrderService {
 

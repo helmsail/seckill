@@ -19,12 +19,13 @@ import java.util.List;
 /**
  * SKU 服务实现（Dubbo 暴露）
  *
- * retries = 0：库存扣减/归还通过 requestId + 流水表（uk_request_id）实现幂等，
- * 自动重试/调用方重放均不会造成库存错账；流水与库存更新同事务（失败回滚不占幂等键）
+ * 库存扣减/归还通过 requestId + 流水表（uk_request_id）实现幂等，
+ * 自动重试/调用方重放均不会造成库存错账；流水与库存更新同事务（失败回滚不占幂等键）。
+ * 消费方重试与否均可安全，无需在 Provider 侧做限制。
  */
 @Slf4j
 @Service
-@DubboService(retries = 0)
+@DubboService
 @RequiredArgsConstructor
 public class SkuServiceImpl implements SkuService {
 

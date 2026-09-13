@@ -16,10 +16,7 @@ public enum ResultEnum implements IResultCode {
     FORBIDDEN("forbidden", "无权限访问"),
 
     // ========== 锁 ==========
-    LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败"),
-
-    // ========== 远程调用 ==========
-    DUBBO_CALL_ERROR("dubbo_call_error", "远程调用异常");
+    LOCK_ACQUIRE_FAILED("lock_acquire_failed", "获取锁失败");
 
     private final String code;
     private final String message;

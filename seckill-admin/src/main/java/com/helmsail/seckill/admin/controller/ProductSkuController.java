@@ -39,7 +39,8 @@ public class ProductSkuController {
     @DubboReference
     private SkuService skuService;
 
-    @DubboReference
+    /** 读写混合：批量增删/上下架为非幂等写，禁用自动重试 */
+    @DubboReference(retries = 0)
     private SeckillProductSkuService seckillProductSkuService;
 
     private final RedisService redisService;
