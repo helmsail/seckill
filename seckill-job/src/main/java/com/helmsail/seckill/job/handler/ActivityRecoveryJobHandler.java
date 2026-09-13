@@ -1,6 +1,5 @@
 package com.helmsail.seckill.job.handler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
@@ -22,19 +21,17 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 活动状态同步与刷新任务
+ * 活动资源回收任务
  *
- * 1. 状态同步：将 PENDING/ACTIVE/PAUSED 活动的 DB 权威状态覆盖写入 Redis Hash，
- *    使暂停/关闭/激活等状态变更（含管理端手动操作）在运行期生效；
- * 2. 终态清理：CLOSED 活动先将未售库存归还主域，再移除 Hash 条目、在售名单与商品列表快照；
- * 3. 展示刷新：刷新进行中活动的商品SKU列表快照。
+ * 1. 终态回收：对 CLOSED 活动先将未售库存归还主域，再移除 Hash 条目、商品列表快照与在售名单键（逐 SKU）；
+ * 2. 孤儿收容：清理 Redis 有记录但 DB 已不存在的活动缓存（如待开始活动被删除后的残留）。
  *
- * 不触碰进行中活动的库存计数 key（运行期实时值不可被刷新覆盖）。
+ * 与缓存同步任务的边界：本任务只在活动终结后触碰库存计数 key，运行期实时值不可被覆盖。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ActivityRefreshJobHandler {
+public class ActivityRecoveryJobHandler {
 
     @DubboReference
     private ActivityService activityService;
@@ -46,7 +43,6 @@ public class ActivityRefreshJobHandler {
     private SkuService skuService;
 
     private final RedisService redisService;
-    private final ObjectMapper objectMapper;
 
     /**
      * 读取即清零：返回剩余值并删除键（-1 表示键不存在）
@@ -60,40 +56,15 @@ public class ActivityRefreshJobHandler {
             + "redis.call('del', KEYS[1]) "
             + "return tonumber(v)";
 
-    @XxlJob("activityRefreshJob")
+    @XxlJob("activityRecoveryJob")
     public void execute() {
-        log.info("活动状态同步与刷新任务启动");
-
-        int synced = syncStatus(ActivityStatus.PENDING)
-                + syncStatus(ActivityStatus.ACTIVE)
-                + syncStatus(ActivityStatus.PAUSED);
+        log.info("活动资源回收任务启动");
 
         int cleaned = cleanClosed();
 
         int orphans = cleanOrphans();
 
-        int refreshed = refreshActiveProducts();
-
-        log.info("活动状态同步与刷新任务完成: 同步状态={}, 清理终态={}, 清理孤儿={}, 刷新商品={}",
-                synced, cleaned, orphans, refreshed);
-    }
-
-    /**
-     * 同步指定状态的活动到 Redis Hash（覆盖写入）
-     */
-    private int syncStatus(ActivityStatus status) {
-        List<ActivityDTO> activities = activityService.listByStatus(status);
-        int synced = 0;
-        for (ActivityDTO activity : activities) {
-            try {
-                redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activity.getActivityNo(),
-                        objectMapper.writeValueAsString(activity));
-                synced++;
-            } catch (Exception e) {
-                log.error("活动状态同步失败: activityNo={}, status={}", activity.getActivityNo(), status, e);
-            }
-        }
-        return synced;
+        log.info("活动资源回收任务完成: 清理终态={}, 清理孤儿={}", cleaned, orphans);
     }
 
     /**
@@ -105,9 +76,10 @@ public class ActivityRefreshJobHandler {
         for (ActivityDTO activity : activities) {
             try {
                 String activityNo = activity.getActivityNo();
-                restoreStock(activityNo);
+                List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
+                restoreStock(activityNo, rows);
                 redisService.hDel(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo);
-                redisService.delete(String.format(SeckillRedisKey.KEY_ACTIVITY_SHELF, activityNo));
+                deleteShelfKeys(activityNo, rows);
                 redisService.delete(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo));
                 cleaned++;
             } catch (Exception e) {
@@ -115,6 +87,17 @@ public class ActivityRefreshJobHandler {
             }
         }
         return cleaned;
+    }
+
+    /**
+     * 清理在售名单键（逐 SKU 删除）
+     *
+     * 行被物理删除的 SKU 已无法枚举，其键随孤儿残留（与库存键同一取舍）。
+     */
+    private void deleteShelfKeys(String activityNo, List<SeckillProductSkuDTO> rows) {
+        for (SeckillProductSkuDTO row : rows) {
+            redisService.delete(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, row.getSkuNo()));
+        }
     }
 
     /**
@@ -127,8 +110,7 @@ public class ActivityRefreshJobHandler {
      * 归还完成写 RESTORED 标记保证跨轮幂等。
      * TODO 终态活动积累较多后，可增加“最近关闭”过滤减少每轮遍历。
      */
-    private void restoreStock(String activityNo) {
-        List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
+    private void restoreStock(String activityNo, List<SeckillProductSkuDTO> rows) {
         for (SeckillProductSkuDTO row : rows) {
             String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
             String restoredKey = String.format(SeckillRedisKey.KEY_SKU_STOCK_RESTORED, activityNo, row.getSkuNo());
@@ -177,6 +159,7 @@ public class ActivityRefreshJobHandler {
      * 清理孤儿活动缓存（Redis 有记录但 DB 不存在：如待开始活动被删除后的残留）
      *
      * 声明式收敛：每轮对比 DB 全量活动号与 Hash 字段，差集即孤儿。
+     * 在售名单键按 SKU 分布、行已不存在无法枚举，只在终态回收中按行清理（与库存键同一取舍）。
      */
     private int cleanOrphans() {
         Set<String> existingNos = activityService.listAll().stream()
@@ -191,7 +174,6 @@ public class ActivityRefreshJobHandler {
             }
             try {
                 redisService.hDel(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo);
-                redisService.delete(String.format(SeckillRedisKey.KEY_ACTIVITY_SHELF, activityNo));
                 redisService.delete(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo));
                 cleaned++;
                 log.warn("孤儿活动缓存已清理: activityNo={}", activityNo);
@@ -200,25 +182,5 @@ public class ActivityRefreshJobHandler {
             }
         }
         return cleaned;
-    }
-
-    /**
-     * 刷新进行中活动的商品SKU列表快照
-     */
-    private int refreshActiveProducts() {
-        List<ActivityDTO> activities = activityService.listByStatus(ActivityStatus.ACTIVE);
-        int refreshed = 0;
-        for (ActivityDTO activity : activities) {
-            try {
-                String activityNo = activity.getActivityNo();
-                List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
-                redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
-                        objectMapper.writeValueAsString(rows));
-                refreshed++;
-            } catch (Exception e) {
-                log.error("活动商品刷新失败: activityNo={}", activity.getActivityNo(), e);
-            }
-        }
-        return refreshed;
     }
 }

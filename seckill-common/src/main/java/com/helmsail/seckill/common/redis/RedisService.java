@@ -32,6 +32,10 @@ public class RedisService {
         return redisTemplate.opsForValue().get(key);
     }
 
+    public List<String> multiGet(List<String> keys) {
+        return redisTemplate.opsForValue().multiGet(keys);
+    }
+
     public Boolean delete(String key) {
         return redisTemplate.delete(key);
     }

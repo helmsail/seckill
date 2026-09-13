@@ -1,7 +1,7 @@
 -- ============================================================
 -- xxl-job 业务调度规则（★ 日常唯一需要维护的 xxl-job 文件）
 --
--- 内容：执行器组 seckill-job + 8 个任务。每行一条规则：
+-- 内容：执行器组 seckill-job + 7 个任务。每行一条规则：
 --       job_desc（说明）/ handler（必须与代码 @XxlJob("...") 逐字一致）/ cron。
 -- 修改：调整周期 = 改对应行的 cron；新增任务 = 追加一行 SELECT。
 --       handler 改错的任务在 admin 里会报 "job handler not found"。
@@ -31,9 +31,8 @@ SELECT g.`id`, t.`job_desc`, NOW(), NOW(), 'seckill', NULL,
 FROM `xxl_job_group` g
 JOIN (
     SELECT '活动状态流转：待开始到点激活' AS `job_desc`, 'activityStatusJob' AS `handler`, '0 * * * * ?' AS `cron`
-    UNION ALL SELECT '活动预热：开始前30分钟写入缓存与库存', 'activityWarmUpJob', '0 * * * * ?'
-    UNION ALL SELECT '活动在售名单同步', 'activityShelfJob', '0 * * * * ?'
-    UNION ALL SELECT '活动状态同步与终态清理', 'activityRefreshJob', '0 * * * * ?'
+    UNION ALL SELECT '活动缓存同步：信息快照、预热与运行期投影', 'activityCacheJob', '0 * * * * ?'
+    UNION ALL SELECT '活动资源回收：终态库存归还与孤儿缓存清理', 'activityRecoveryJob', '0 * * * * ?'
     UNION ALL SELECT '活动到期关闭', 'activityCloseJob', '0 * * * * ?'
     UNION ALL SELECT '订单超时关单', 'orderTimeoutJob', '0 * * * * ?'
     UNION ALL SELECT '订单同步对账', 'orderSyncReconcileJob', '0 * * * * ?'

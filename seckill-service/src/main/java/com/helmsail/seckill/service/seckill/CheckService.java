@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -31,8 +30,6 @@ import java.util.concurrent.TimeUnit;
 @Service
 @RequiredArgsConstructor
 public class CheckService {
-
-    private static final String SISMEMBER_LUA = "return redis.call('sismember', KEYS[1], ARGV[1])";
 
     private final RedisService redisService;
     private final RedissonClient redissonClient;
@@ -119,14 +116,13 @@ public class CheckService {
     }
 
     /**
-     * 在售检查（Redis 名单，仅作前置过滤）
+     * 在售检查（Redis 在售键，仅作前置过滤）
      *
-     * 正确性以 processor 的 DB 权威状态终判为准；名单滞后最多导致少量请求白跑。
+     * 正确性以 processor 的 DB 权威状态终判为准；键滞后最多导致少量请求白跑。
      */
     public boolean checkSkuOnShelf(String activityNo, String skuNo) {
-        String key = String.format(SeckillRedisKey.KEY_ACTIVITY_SHELF, activityNo);
-        Long result = redisService.executeLua(SISMEMBER_LUA, Collections.singletonList(key), skuNo);
-        return result != null && result > 0;
+        String key = String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, skuNo);
+        return "1".equals(redisService.get(key));
     }
 
     /**

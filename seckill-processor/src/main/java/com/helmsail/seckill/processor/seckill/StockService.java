@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * 秒杀库存扣减（Redis 原子操作，运行期唯一权威）
  *
- * key 由 activityNo + skuNo 定位；库存计数仅由预热初始化、此处扣/补，刷新任务不触碰。
+ * key 由 activityNo + skuNo 定位；库存计数仅由预热窗口缺省初始化、此处扣/补，缓存同步任务其余分支不触碰。
  */
 @Slf4j
 @Service

@@ -1,7 +1,6 @@
 package com.helmsail.seckill.service.activity;
 
 import com.helmsail.seckill.base.activity.ActivityDTO;
-import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -38,7 +37,7 @@ public class ActivityController {
      * 查询活动商品SKU列表
      */
     @GetMapping("/{activityNo}/products")
-    public Result<List<SeckillProductSkuDTO>> getProductList(@PathVariable String activityNo) {
+    public Result<List<ActivityProductVO>> getProductList(@PathVariable String activityNo) {
         return Result.success(activityQueryService.getProductListByActivityNo(activityNo));
     }
 

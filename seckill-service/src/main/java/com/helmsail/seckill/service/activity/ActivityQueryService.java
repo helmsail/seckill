@@ -16,6 +16,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -143,8 +144,37 @@ public class ActivityQueryService {
         return activityInfoCache.get(activityNo);
     }
 
-    public List<SeckillProductSkuDTO> getProductListByActivityNo(String activityNo) {
-        return activityProductCache.get(activityNo);
+    /**
+     * 商品列表：快照（静态目录）+ 运行态值拼装，返回查询视图
+     *
+     * 实时余量 / 上下架状态从库存键、在售键 MGET 读出后填入返回副本
+     * （不污染缓存对象），前端无需再逐 SKU 单独拉取。
+     */
+    public List<ActivityProductVO> getProductListByActivityNo(String activityNo) {
+        List<SeckillProductSkuDTO> rows = activityProductCache.get(activityNo);
+        if (rows == null) {
+            return null;
+        }
+        List<String> stockKeys = new ArrayList<>(rows.size());
+        List<String> shelfKeys = new ArrayList<>(rows.size());
+        for (SeckillProductSkuDTO row : rows) {
+            stockKeys.add(String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo()));
+            shelfKeys.add(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, row.getSkuNo()));
+        }
+        List<String> stocks = stockKeys.isEmpty() ? List.of() : redisService.multiGet(stockKeys);
+        List<String> shelves = shelfKeys.isEmpty() ? List.of() : redisService.multiGet(shelfKeys);
+        List<ActivityProductVO> list = new ArrayList<>(rows.size());
+        for (int i = 0; i < rows.size(); i++) {
+            ActivityProductVO view = new ActivityProductVO();
+            BeanUtils.copyProperties(rows.get(i), view);
+            String stock = stocks == null ? null : stocks.get(i);
+            String shelf = shelves == null ? null : shelves.get(i);
+            view.setRemainingStock(stock == null ? 0 : Integer.parseInt(stock));
+            // 上下架以在售键为准（缺失按 0，与购买门禁同口径）
+            view.setShelfStatus("1".equals(shelf) ? 1 : 0);
+            list.add(view);
+        }
+        return list;
     }
 
     public Integer getSkuStock(String activityNo, String skuNo) {

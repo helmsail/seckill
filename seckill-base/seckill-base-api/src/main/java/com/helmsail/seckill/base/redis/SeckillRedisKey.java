@@ -4,14 +4,14 @@ package com.helmsail.seckill.base.redis;
  * 秒杀域 Redis Key 常量（唯一权威清单）
  *
  * 命名规范：seckill:{域}:{对象}[:{标识}...]
- * 分组顺序即业务生命周期：活动快照 → 库存计数 → 用户准入 → 秒杀结果 → 支付 → 补偿
+ * 分组顺序即业务生命周期：活动快照 → SKU 运行态 → 用户准入 → 秒杀结果 → 支付 → 补偿
  * 全项目统一经本清单引用，禁止散落字符串硬编码
  */
 public final class SeckillRedisKey {
 
     private SeckillRedisKey() {}
 
-    // ========== 活动快照（预热写入，C 端查询读取；终态由刷新任务清理） ==========
+    // ========== 活动快照（缓存同步任务写入，C 端查询读取；终态由回收任务清理） ==========
 
     /** 活动信息 Hash（field=activityNo） */
     public static final String KEY_ACTIVITY_INFO = "seckill:activity:info";
@@ -19,13 +19,13 @@ public final class SeckillRedisKey {
     /** 活动商品SKU列表快照（标识：activityNo） */
     public static final String KEY_ACTIVITY_PRODUCT_LIST = "seckill:activity:products:%s";
 
-    /** 活动在售 SKU 名单（SET，成员=上架 skuNo；标识：activityNo） */
-    public static final String KEY_ACTIVITY_SHELF = "seckill:activity:shelf:%s";
-
-    // ========== 库存计数（运行期权威：预热初始化，扣减 / 回补 / 终态归还） ==========
+    // ========== SKU 运行态（预热初始化；库存计数扣减 / 回补 / 终态归还；在售状态随上下架覆盖） ==========
 
     /** SKU 库存计数（预热初始化，运行期扣减 / 回补；标识：activityNo:skuNo） */
     public static final String KEY_SKU_STOCK = "seckill:sku:stock:%s:%s";
+
+    /** SKU 在售状态（预热初始化，运行期随上下架覆盖；value=1 上架 / 0 下架；标识：activityNo:skuNo） */
+    public static final String KEY_SKU_SHELF = "seckill:sku:shelf:%s:%s";
 
     /** SKU 库存归还完成标记（终态清理跨轮幂等依据，写入后长期保留；标识：activityNo:skuNo） */
     public static final String KEY_SKU_STOCK_RESTORED = "seckill:sku:stock:restored:%s:%s";
