@@ -10,6 +10,7 @@
 #   xxl-job-admin 8080 | nacos 8848/9848 | sentinel-dashboard 8858 | mysql 3306 | redis 6379 | rocketmq 9876/10911
 #
 # 说明：应用容器通过 env_file 注入 .env；中间件配置直接使用 .env 变量替换（compose 自动读取项目根 .env）
+# 数据策略：数据全部存放容器内部（不挂外部卷）——stop/restart 保留数据，容器删除（down/重建）即重置
 
 name: seckill
 
@@ -29,8 +30,7 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - mysql-data:/var/lib/mysql
-      # 首次初始化（仅数据卷为空时执行）：initdb 目录统一维护（建库建表 + xxl-job 初始化，按字母序执行）
+      # 首次初始化（数据目录为空时执行）：initdb 目录统一维护（建库建表 + xxl-job 初始化，按字母序执行）
       - ./docker/mysql/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD" ]
@@ -44,8 +44,6 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-    volumes:
-      - redis-data:/data
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -67,12 +65,9 @@ services:
     ports:
       - "8848:8848"
       - "9848:9848"
-    volumes:
-      - nacos-data:/home/nacos/data
 
   rocketmq-namesrv:
-    # 本地镜像（基于官方镜像预建 logs/store 目录，属主 rocketmq）：避免空卷属主 root
-    # 导致进程（rocketmq 用户）不可写而崩溃循环，详见 docker/rocketmq/Dockerfile
+    # 本地镜像（基于官方镜像预建 logs/store 目录，属主 rocketmq），详见 docker/rocketmq/Dockerfile
     build: ./docker/rocketmq
     image: seckill-rocketmq
     container_name: seckill-rocketmq-namesrv
@@ -82,12 +77,9 @@ services:
       JAVA_OPT_EXT: "-Xms256m -Xmx256m"
     ports:
       - "9876:9876"
-    volumes:
-      - rocketmq-namesrv-logs:/home/rocketmq/logs
 
   rocketmq-broker:
-    # 本地镜像（基于官方镜像预建 logs/store 目录，属主 rocketmq）：避免空卷属主 root
-    # 导致进程（rocketmq 用户）不可写而崩溃循环（曾表现为退出码 253 无限重启）
+    # 本地镜像（基于官方镜像预建 logs/store 目录，属主 rocketmq），详见 docker/rocketmq/Dockerfile（曾表现为退出码 253 无限重启）
     build: ./docker/rocketmq
     image: seckill-rocketmq
     container_name: seckill-rocketmq-broker
@@ -102,8 +94,6 @@ services:
       - "10911:10911"
     volumes:
       - ./docker/rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
-      - rocketmq-broker-store:/home/rocketmq/store
-      - rocketmq-broker-logs:/home/rocketmq/logs
 
   xxl-job-admin:
     image: xuxueli/xxl-job-admin:2.5.0
@@ -245,11 +235,3 @@ services:
         condition: service_started
     ports:
       - "${SUPPORT_PORT}:${SUPPORT_PORT}"
-
-volumes:
-  mysql-data:
-  redis-data:
-  nacos-data:
-  rocketmq-namesrv-logs:
-  rocketmq-broker-store:
-  rocketmq-broker-logs:
