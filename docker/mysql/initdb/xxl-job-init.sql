@@ -1,7 +1,7 @@
 -- ============================================================
 -- xxl-job 业务调度规则（★ 日常唯一需要维护的 xxl-job 文件）
 --
--- 内容：执行器组 seckill-job + 6 个任务。每行一条规则：
+-- 内容：执行器组 seckill-job + 5 个任务。每行一条规则：
 --       job_desc（说明）/ handler（必须与代码 @XxlJob("...") 逐字一致）/ cron。
 -- 修改：调整周期 = 改对应行的 cron；新增任务 = 追加一行 SELECT。
 --       handler 改错的任务在 admin 里会报 "job handler not found"。

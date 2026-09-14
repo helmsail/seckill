@@ -124,7 +124,7 @@ services:
       - "8080:8080"
 
   sentinel-dashboard:
-    # 社区镜像；若拉取失败可注释本服务（gateway 连不上 dashboard 不影响运行）
+    # 社区镜像；若拉取失败可注释本服务（同步删去 gateway 的 sentinel-dashboard 依赖，否则 compose 报 depends on undefined service； gateway 连不上 dashboard 不影响运行）
     image: bladex/sentinel-dashboard:1.8.8
     container_name: seckill-sentinel-dashboard
     restart: unless-stopped
