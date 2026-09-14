@@ -56,21 +56,23 @@ public class SeckillService {
         request.setUserId(userId);
         request.setTraceId(traceId);
 
-        // 结果键由消费端（processor）统一创建与回写；发送失败直接抛错，用户无需轮询
-        sendMqMessage(request);
-
-        log.info("秒杀请求已提交: userId={}, activityNo={}, skuNo={}, traceId={}", userId, activityNo, skuNo, traceId);
-        return traceId;
-    }
-
-    private void sendMqMessage(SeckillRequest request) {
+        // 同步发送（send 即同步）。发送异常/超时只能说明"结果不确定"：客户端已内置重试（默认 2 次），
+        // 消息可能已实际到达 broker；此时向用户返回失败会诱导重试——重试请求携带新 traceId，
+        // 绕过消费端按 traceId 的幂等链，造成真正重复的下单尝试。
+        // 故发送异常只记日志、仍返回 traceId：消息到达则结果轮询必有所获，同 traceId 的重复投递由幂等链去重；
+        // 消息彻底丢失的极端情况由用户侧轮询超时兜底。
+        // SendStatus 不做显式判定：本集群 ASYNC_FLUSH + 单 master，FLUSH_DISK_TIMEOUT/SLAVE_* 实际不可达，
+        // 且消息只要入 broker 存储即会投递，判定结果已无动作可做，回归默认行为。
         try {
             String json = objectMapper.writeValueAsString(request);
             Message<String> message = BaggageUtils.buildMessage(json);
             rocketMQTemplate.send(MqTopic.SECKILL_ORDER, message);
         } catch (Exception e) {
-            throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(), "发送消息失败");
+            log.error("秒杀消息发送结果不确定（消息可能已投递，以结果轮询为准）: traceId={}", traceId, e);
         }
+
+        log.info("秒杀请求已提交: userId={}, activityNo={}, skuNo={}, traceId={}", userId, activityNo, skuNo, traceId);
+        return traceId;
     }
 
     public SeckillResultVO pollResult(String traceId) {
