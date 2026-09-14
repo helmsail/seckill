@@ -25,6 +25,7 @@ public enum SeckillResultEnum implements IResultCode {
     // ========== 秒杀 ==========
     RATE_LIMITED("rate_limited", "请求过于频繁"),
     BLACKLISTED("blacklisted", "已被限制参与秒杀"),
+    PURCHASE_LIMITED("purchase_limited", "超过限购"),
 
     // ========== 订单 ==========
     ORDER_NOT_FOUND("order_not_found", "订单不存在"),

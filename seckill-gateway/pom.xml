@@ -41,12 +41,6 @@
             <artifactId>sentinel-datasource-nacos</artifactId>
         </dependency>
 
-        <!-- Nacos Config（动态配置） -->
-        <dependency>
-            <groupId>com.alibaba.cloud</groupId>
-            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
-        </dependency>
-
         <!-- Nacos 服务发现（lb:// 路由解析后端实例；loadbalancer 为 Gateway 必需，默认不带） -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>

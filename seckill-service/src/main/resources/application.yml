@@ -5,8 +5,10 @@ spring:
   application:
     name: seckill-service
   config:
+    # 导入按声明序处理、后声明者优先：.env 先加载，保证 Nacos 连接参数可解析；Nacos 配置优先覆盖本地
     import:
       - optional:file:.env[.properties]
+      - optional:nacos:seckill-service.yml
   # Spring Cloud 服务发现（供网关 lb:// 解析实例）；namespace 保持 public，隔离靠 group
   cloud:
     nacos:
@@ -15,6 +17,14 @@ spring:
         username: ${NACOS_USERNAME}
         password: ${NACOS_PASSWORD}
         group: SECKILL_DISCOVERY
+      # 配置中心（准入参数动态化）：Data ID=seckill-service.yml，group=SECKILL_CONFIG；不写 namespace 即 public
+      # Nacos 不可用/未建配置时 optional 不阻塞启动，SeckillConfig 类内默认值兜底
+      config:
+        server-addr: ${NACOS_ADDR}
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
+        group: SECKILL_CONFIG
+        file-extension: yml
   data:
     redis:
       host: ${REDIS_HOST}

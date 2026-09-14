@@ -6,7 +6,6 @@ spring:
     name: seckill-gateway
   config:
     import:
-      - optional:nacos:seckill-gateway.yml
       - optional:file:.env[.properties]
 
   cloud:
@@ -34,19 +33,13 @@ spring:
     # ---------- Nacos ----------
     nacos:
       # 服务发现：仅用于网关 lb:// 解析后端 Web 实例（隔离靠 group，namespace 保持 public）
+      # 未接配置中心（nacos-config 依赖已移除）：网关 Spring 配置本地维护；
+      # Nacos 侧动态配置仅保留 Sentinel 限流规则（走下方 datasource，独立连接，不经配置中心）
       discovery:
         server-addr: ${NACOS_ADDR}
         username: ${NACOS_USERNAME}
         password: ${NACOS_PASSWORD}
         group: SECKILL_DISCOVERY
-      # 配置中心（与 Sentinel 规则共用 seckill-sentinel 命名空间）
-      # 注意：不要写 namespace: public（nacos#9418），客户端按字面量查询会读不到配置
-      config:
-        server-addr: ${NACOS_ADDR}
-        username: ${NACOS_USERNAME}
-        password: ${NACOS_PASSWORD}
-        namespace: seckill-sentinel
-        file-extension: yml
 
     # ---------- Sentinel 限流 ----------
     sentinel:

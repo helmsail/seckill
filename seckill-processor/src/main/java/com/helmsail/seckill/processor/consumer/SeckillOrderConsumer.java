@@ -3,7 +3,7 @@ package com.helmsail.seckill.processor.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityService;
-import com.helmsail.seckill.base.activity.ActivityWindows;
+import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.mq.MqGroup;
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.CreateSeckillOrderRequest;
@@ -28,13 +28,12 @@ import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 
 /**
  * 秒杀下单消费者（RocketMQ 顺序消费）
  *
  * 失败语义（有意设计，不依赖 MQ 重投）：
- *   - 业务失败（限购/库存/窗口/下架）→ 结果键标记 FAILED（重试徒劳）；
+ *   - 业务失败（活动状态/限购/库存/下架）→ 结果键标记 FAILED（重试徒劳）；
  *   - 技术异常 → 同样标记 FAILED 且不重投（秒杀语义“宁可失败不乱账”），
  *     用户重新发起即全新 traceId，天然安全。
  * 幂等链：Redis 结果键（重投拦截）→ traceId 订单查证（兜底短路/回补纠正）→ 唯一约束 uk_user_trace（落库去重）。
@@ -107,10 +106,10 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
     }
 
     private void processSeckill(SeckillRequest request, String idempotentKey) {
-        // 活动级 DB 权威终判（缓存状态同步延迟窗口内的最后一道闸）
+        // 活动级 DB 状态终判：消息排队期间活动可能恰好关闭；无需判时间——消息只会产生于开始之后
         ActivityDTO activity = activityService.getByActivityNo(request.getActivityNo());
-        if (!ActivityWindows.isInEffectiveWindow(activity, LocalDateTime.now())) {
-            idempotentService.markFailed(idempotentKey, "活动不在生效时段");
+        if (activity == null || activity.getActivityStatus() != ActivityStatus.ACTIVE) {
+            idempotentService.markFailed(idempotentKey, "活动不在进行中");
             return;
         }
 

@@ -195,4 +195,20 @@ public class ActivityQueryService {
         String stock = redisService.get(stockKey);
         return stock != null ? Integer.parseInt(stock) : 0;
     }
+
+    /**
+     * 查 SKU 限购数量（0=不限购；SKU 不在快照中返回 null，由调用方决定放行）
+     */
+    public Integer getSkuPurchaseLimit(String activityNo, String skuNo) {
+        List<SeckillProductSkuDTO> rows = activityProductCache.get(activityNo);
+        if (rows == null) {
+            return null;
+        }
+        for (SeckillProductSkuDTO row : rows) {
+            if (row.getSkuNo().equals(skuNo)) {
+                return row.getPurchaseLimit();
+            }
+        }
+        return null;
+    }
 }

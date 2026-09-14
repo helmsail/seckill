@@ -3,14 +3,12 @@ package com.helmsail.seckill.service.seckill;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
-import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.base.seckill.SeckillRequest;
 import com.helmsail.seckill.base.seckill.SeckillResultVO;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.common.tracing.BaggageKeys;
-import com.helmsail.seckill.common.tracing.TraceIdGenerator;
 import com.helmsail.seckill.common.tracing.UserContext;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import lombok.RequiredArgsConstructor;
@@ -42,34 +40,18 @@ public class SeckillService {
         String skuNo = request.getSkuNo();
         String traceId = MDC.get(BaggageKeys.TRACE_ID);
         if (traceId == null || traceId.isBlank()) {
-            // 兜底：绕过网关直连时无 traceId，生成后写入 MDC，保证结果键唯一且日志与 MQ 透传一致
-            traceId = TraceIdGenerator.generate();
-            MDC.put(BaggageKeys.TRACE_ID, traceId);
+            // traceId 由网关生成并透传，缺失即链路断裂：快速失败暴露，不做静默兜底
+            // （traceId 兼任幂等键与结果键，兜底会掩盖透传故障并割裂全链路日志）
+            throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(), "请求缺失链路标识 traceId");
         }
 
-        if (!checkService.checkRateLimit(userId)) {
-            throw new BizException(SeckillResultEnum.RATE_LIMITED);
-        }
-
-        if (!checkService.checkActivityStatus(activityNo, userId)) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
-        }
-
-        if (!checkService.checkEffectiveWindow(activityNo)) {
-            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
-        }
-
-        if (!checkService.checkSkuOnShelf(activityNo, skuNo)) {
-            throw new BizException(SeckillResultEnum.SKU_OFF_SHELF);
-        }
-
-        if (!checkService.checkBlacklist(userId)) {
-            throw new BizException(SeckillResultEnum.BLACKLISTED);
-        }
-
-        if (!checkService.checkStock(activityNo, skuNo, request.getQuantity())) {
-            throw new BizException(SeckillResultEnum.STOCK_INSUFFICIENT);
-        }
+        // 六项准入检查按序收缩，任一失败即在 CheckService 内抛对应业务码
+        checkService.checkRateLimit(userId);
+        checkService.checkActivity(activityNo, userId);
+        checkService.checkBlacklist(userId);
+        checkService.checkPurchaseLimit(activityNo, skuNo, userId, request.getQuantity());
+        checkService.checkSkuOnShelf(activityNo, skuNo);
+        checkService.checkStock(activityNo, skuNo, request.getQuantity());
 
         request.setUserId(userId);
         request.setTraceId(traceId);
