@@ -21,6 +21,7 @@ import com.helmsail.seckill.support.api.pay.PayTradeStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
+import org.apache.dubbo.config.annotation.Method;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -49,8 +50,8 @@ public class PayService {
     /** 二维码缓存有效期（秒） */
     private static final int QR_CODE_CACHE_TTL = 10 * 60;
 
-    /** 含 paySuccess 写路径（条件更新幂等），禁用自动重试保持写语义确定 */
-    @DubboReference(retries = 0)
+    /** 读写混合：paySuccess 写方法级禁重试保持写语义确定；读方法不声明，自动走引用级默认 */
+    @DubboReference(methods = @Method(name = "paySuccess", retries = 0))
     private SeckillOrderDubboService seckillOrderService;
 
     /** 支付渠道网关（preCreate/verifyNotify 含渠道调用，禁自动重试） */
@@ -156,7 +157,7 @@ public class PayService {
                 }
             }
 
-            // 3. 支付完成：条件更新（重复/竞态幂等）→ 清二维码缓存 → 同步主域（发送失败不回滚支付，漏同步由对账补偿）
+            // 3. 支付完成：条件更新（重复/竞态幂等）→ 清二维码缓存 → 同步主域（发送失败不回滚支付，漏同步由对账任务捞回）
             seckillOrderService.paySuccess(order.getOrderNo(), notify.getTradeNo());
             redisService.delete(String.format(SeckillRedisKey.KEY_PAY_QRCODE, order.getOrderNo()));
             sendOrderSync(order, notify.getTradeNo());

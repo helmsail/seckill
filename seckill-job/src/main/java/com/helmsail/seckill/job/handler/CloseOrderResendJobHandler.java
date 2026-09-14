@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * 订单超时补偿任务（兜底延迟消息失效的漏网关单）
+ * 关单消息补发任务（兜底延迟消息失效的漏网关单）
  *
  * 扫描创建超过 TIMEOUT_MINUTES 仍为待支付的订单，补发立即关单消息，
  * 复用关单消费者链路（关闭 + 库存/限购回补）。
@@ -24,7 +24,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class OrderTimeoutJobHandler {
+public class CloseOrderResendJobHandler {
 
     /** 补关单阈值（分钟）：延迟消息时长（10 分钟）+ 1 分钟冗余，只补漏不误抢 */
     private static final int TIMEOUT_MINUTES = 11;
@@ -37,7 +37,7 @@ public class OrderTimeoutJobHandler {
 
     private final RocketMQTemplate rocketMQTemplate;
 
-    @XxlJob("orderTimeoutJob")
+    @XxlJob("closeOrderResendJob")
     public void execute() {
         List<String> orderNos = seckillOrderService.listTimeoutOrderNos(TIMEOUT_MINUTES, BATCH_LIMIT);
         if (orderNos.isEmpty()) {
@@ -49,7 +49,7 @@ public class OrderTimeoutJobHandler {
                 sent++;
             }
         }
-        log.info("订单超时补偿完成: 扫描={}, 补发={}", orderNos.size(), sent);
+        log.info("关单补发任务完成: 扫描={}, 补发={}", orderNos.size(), sent);
     }
 
     /**

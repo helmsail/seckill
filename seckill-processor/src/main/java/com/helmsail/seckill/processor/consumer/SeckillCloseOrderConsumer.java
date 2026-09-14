@@ -22,10 +22,10 @@ import java.nio.charset.StandardCharsets;
 /**
  * 自动关单消费者
  *
- * 接收延迟消息（含 orderTimeoutJob 补发的立即消息）：待支付订单超时未付则关闭，并回补秒杀域库存与限购额度。
+ * 接收延迟消息（含 closeOrderResendJob 补发的立即消息）：待支付订单超时未付则关闭，并回补秒杀域库存与限购额度。
  * 主流程（processClose）：查询校验 → 条件关单 → 回补资源，每步跳过路径即 ACK。
  * 异常语义：订单不存在/状态非待支付属永久跳过；其余异常上抛触发 MQ 重投（拿不准就不关，方向安全）；
- * 回补失败自动登记持久化补偿（compensationJob 重试，超限转人工）。
+ * 回补失败仅记日志（需人工核对）。
  */
 @Slf4j
 @Component
@@ -95,7 +95,7 @@ public class SeckillCloseOrderConsumer implements RocketMQListener<MessageExt> {
     }
 
     /**
-     * 回补秒杀域资源（restore 为标记守卫的幂等操作；失败自动登记持久化补偿，由 compensationJob 重试）
+     * 回补秒杀域资源（restore 为标记守卫的幂等操作；失败仅记日志，需人工核对）
      */
     private void restoreResources(SeckillOrderDTO order) {
         try {

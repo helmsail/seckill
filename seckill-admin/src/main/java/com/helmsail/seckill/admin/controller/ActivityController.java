@@ -8,6 +8,7 @@ import com.helmsail.seckill.common.result.Result;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
+import org.apache.dubbo.config.annotation.Method;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -24,8 +25,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ActivityController {
 
-    /** 读写混合：写操作（create/delete/update/状态流转）非幂等，禁用自动重试 */
-    @DubboReference(retries = 0)
+    /** 读写混合：写方法方法级禁重试；读方法不声明，自动走引用级默认 */
+    @DubboReference(methods = {
+            @Method(name = "create", retries = 0),
+            @Method(name = "delete", retries = 0),
+            @Method(name = "update", retries = 0),
+            @Method(name = "pause", retries = 0),
+            @Method(name = "resume", retries = 0),
+            @Method(name = "close", retries = 0)
+    })
     private ActivityDubboService activityService;
 
     @DubboReference

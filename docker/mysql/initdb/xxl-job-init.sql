@@ -33,9 +33,8 @@ JOIN (
     SELECT '活动状态流转：激活与关闭' AS `job_desc`, 'activityStatusJob' AS `handler`, '0 * * * * ?' AS `cron`
     UNION ALL SELECT '活动缓存同步：信息快照、预热与运行期投影', 'activityCacheJob', '0 * * * * ?'
     UNION ALL SELECT '活动资源回收：终态库存归还与孤儿缓存清理', 'activityRecoveryJob', '0 * * * * ?'
-    UNION ALL SELECT '订单超时关单', 'orderTimeoutJob', '0 * * * * ?'
-    UNION ALL SELECT '订单同步对账', 'orderSyncReconcileJob', '0 * * * * ?'
-    UNION ALL SELECT '库存补偿重试', 'compensationJob', '0 * * * * ?'
+    UNION ALL SELECT '订单关单补发：兜底延迟消息失效', 'closeOrderResendJob', '0 * * * * ?'
+    UNION ALL SELECT '订单同步补发：兜底主域漏账', 'orderSyncResendJob', '0 * * * * ?'
 ) t ON 1 = 1
 WHERE g.`app_name` = 'seckill-job'
   AND NOT EXISTS (SELECT 1 FROM `xxl_job_info` i WHERE i.`executor_handler` = t.`handler`);

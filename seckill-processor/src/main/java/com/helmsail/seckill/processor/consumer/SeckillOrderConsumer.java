@@ -146,7 +146,7 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
         boolean stockPassed = stockService.deduct(activityNo, skuNo, quantity, idempotentKey);
         if (!stockPassed) {
-            // 回补限购（标记守卫幂等）；回补失败由补偿任务兜底，业务失败语义不变
+            // 回补限购（标记守卫幂等）；回补失败仅记日志，业务失败语义不变
             purchaseLimitService.restore(activityNo, skuNo, userId, quantity, idempotentKey);
             consumeStateService.markFailed(idempotentKey, "库存不足");
             return;
@@ -169,8 +169,8 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
         if (!sendCloseOrderMessage(orderNo)) {
             // 订单已创建，不回补资源（订单生命周期仍成立）；
-            // 延迟消息缺失由 orderTimeoutJob 扫描补发关单消息兜底
-            log.error("发送延迟消息失败，依赖 orderTimeoutJob 兜底补关单: orderNo={}", orderNo);
+            // 延迟消息缺失由 closeOrderResendJob 扫描补发关单消息兜底
+            log.error("发送延迟消息失败，依赖 closeOrderResendJob 兜底补关单: orderNo={}", orderNo);
         }
 
         consumeStateService.markSuccess(idempotentKey, orderNo);
@@ -288,7 +288,7 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
         }
     }
 
-    /** 标记守卫回补：仅回补“确定已扣”（标记存在）的资源，宁可少还、不超还；回补失败由补偿任务兜底 */
+    /** 标记守卫回补：仅回补“确定已扣”（标记存在）的资源，宁可少还、不超还；回补失败仅记日志（需人工核对） */
     private void rollbackByMarkers(SeckillRequest request, String traceId) {
         stockService.restore(request.getActivityNo(), request.getSkuNo(), request.getQuantity(), traceId);
         purchaseLimitService.restore(request.getActivityNo(), request.getSkuNo(),

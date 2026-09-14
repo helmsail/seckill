@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 订单同步对账任务（兜底支付成功事件丢失导致的主域漏账）
+ * 订单同步补发任务（兜底支付成功事件丢失导致的主域漏账）
  *
  * 以「主域存在性」为唯一判据：扫描时间窗内秒杀域已支付订单，
  * 对比主域缺失的订单补发同步消息（复用 processor 消费者 + support 幂等 create）。
@@ -29,9 +29,9 @@ import java.util.Set;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class OrderSyncReconcileJobHandler {
+public class OrderSyncResendJobHandler {
 
-    /** 对账时间窗（分钟）：需覆盖任务最长停摆时间，窗口外的漏账不再补 */
+    /** 扫描时间窗（分钟）：需覆盖任务最长停摆时间，窗口外的漏账不再补 */
     private static final int WINDOW_MINUTES = 24 * 60;
 
     /** 单次扫描上限（分片表按分片生效，实际量最多为 分片数 × limit） */
@@ -49,7 +49,7 @@ public class OrderSyncReconcileJobHandler {
     private final RocketMQTemplate rocketMQTemplate;
     private final ObjectMapper objectMapper;
 
-    @XxlJob("orderSyncReconcileJob")
+    @XxlJob("orderSyncResendJob")
     public void execute() {
         List<SeckillOrderDTO> paidOrders = seckillOrderService.listPaidOrdersSince(WINDOW_MINUTES, SCAN_LIMIT);
         if (paidOrders.isEmpty()) {
@@ -76,7 +76,7 @@ public class OrderSyncReconcileJobHandler {
                 log.error("订单同步漏账补发失败: orderNo={}", order.getOrderNo(), e);
             }
         }
-        log.info("订单同步对账完成: 扫描={}, 缺失={}, 补发={}",
+        log.info("订单同步补发任务完成: 扫描={}, 缺失={}, 补发={}",
                 paidOrders.size(), paidOrders.size() - existing.size(), resent);
     }
 

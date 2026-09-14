@@ -4,7 +4,7 @@ package com.helmsail.seckill.base.redis;
  * 秒杀域 Redis Key 常量（唯一权威清单）
  *
  * 命名规范：seckill:{域}:{对象}[:{标识}...]
- * 分组顺序即业务生命周期：活动快照 → SKU 运行态 → 用户准入 → 秒杀结果 → 消费幂等标记 → 支付 → 补偿
+ * 分组顺序即业务生命周期：活动快照 → SKU 运行态 → 用户准入 → 秒杀结果 → 消费幂等标记 → 支付
  * 全项目统一经本清单引用，禁止散落字符串硬编码
  */
 public final class SeckillRedisKey {
@@ -61,12 +61,4 @@ public final class SeckillRedisKey {
 
     /** 支付回调处理锁（标识：orderNo） */
     public static final String KEY_PAY_LOCK = "seckill:pay:lock:%s";
-
-    // ========== 补偿（运维兜底：pending 待消费，failed 转人工） ==========
-
-    /** 待补偿库存归还（Hash，field=类型:活动:SKU，value=JSON 明细；compensationJob 消费） */
-    public static final String KEY_COMPENSATION_PENDING = "seckill:compensation:pending";
-
-    /** 补偿重试超限转人工（Hash，field 与 pending 一致） */
-    public static final String KEY_COMPENSATION_FAILED = "seckill:compensation:failed";
 }

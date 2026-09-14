@@ -25,16 +25,12 @@ public interface SkuDubboService {
     List<SkuDTO> listBySkuName(String skuName) throws BizException;
 
     /**
-     * 扣减库存（按 requestId 幂等：同 requestId 重复调用不重复扣减）
-     *
-     * @param requestId 幂等键（调用方生成，全局唯一；建议“批次:SKU:动作”格式）
+     * 扣减库存
      */
-    void deductStock(String skuNo, int quantity, String requestId) throws BizException;
+    void deductStock(String skuNo, int quantity) throws BizException;
 
     /**
-     * 增加库存（按 requestId 幂等：同 requestId 重复调用不重复归还）
-     *
-     * @param requestId 幂等键（调用方生成，全局唯一）
+     * 增加库存
      */
-    void addStock(String skuNo, int quantity, String requestId) throws BizException;
+    void addStock(String skuNo, int quantity) throws BizException;
 }

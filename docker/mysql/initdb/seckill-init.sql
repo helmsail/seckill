@@ -149,18 +149,6 @@ CREATE TABLE IF NOT EXISTS t_order (
     KEY idx_is_deleted (is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
 
--- SKU 库存变更流水（Dubbo 库存操作的幂等闸：request_id 唯一约束，与库存更新同事务）
-CREATE TABLE IF NOT EXISTS t_stock_log (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    request_id VARCHAR(96) NOT NULL COMMENT '幂等键（调用方生成，全局唯一）',
-    sku_no VARCHAR(32) NOT NULL COMMENT 'SKU编号',
-    change_type TINYINT NOT NULL COMMENT '变更类型：1=扣减，2=归还',
-    quantity INT NOT NULL COMMENT '变更数量',
-    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    UNIQUE KEY uk_request_id (request_id),
-    KEY idx_sku_no (sku_no)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SKU库存变更流水（幂等依据）';
-
 -- ============================ 基础数据 ============================
 
 INSERT INTO t_product (spu_no, product_name) VALUES
