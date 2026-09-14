@@ -3,10 +3,10 @@ package com.helmsail.seckill.job.handler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.SeckillOrderDTO;
-import com.helmsail.seckill.base.order.SeckillOrderService;
+import com.helmsail.seckill.base.order.SeckillOrderDubboService;
 import com.helmsail.seckill.base.order.SeckillOrderSyncEvent;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
-import com.helmsail.seckill.support.api.order.OrderService;
+import com.helmsail.seckill.support.api.order.OrderDubboService;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,10 +41,10 @@ public class OrderSyncReconcileJobHandler {
     private static final int QUERY_BATCH_SIZE = 500;
 
     @DubboReference
-    private SeckillOrderService seckillOrderService;
+    private SeckillOrderDubboService seckillOrderService;
 
     @DubboReference
-    private OrderService supportOrderService;
+    private OrderDubboService supportOrderService;
 
     private final RocketMQTemplate rocketMQTemplate;
     private final ObjectMapper objectMapper;

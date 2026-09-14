@@ -4,13 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.productsku.AddProductSkuRequest;
 import com.helmsail.seckill.base.productsku.RemoveProductSkuRequest;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
-import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
 import com.helmsail.seckill.base.productsku.ShelfProductSkuRequest;
 import com.helmsail.seckill.base.productsku.StockRestoreItem;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
 import com.helmsail.seckill.common.result.Result;
-import com.helmsail.seckill.support.api.sku.SkuService;
+import com.helmsail.seckill.support.api.sku.SkuDubboService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,11 +37,11 @@ import java.util.stream.Collectors;
 public class ProductSkuController {
 
     @DubboReference
-    private SkuService skuService;
+    private SkuDubboService skuService;
 
     /** 读写混合：批量增删/上下架为非幂等写，禁用自动重试 */
     @DubboReference(retries = 0)
-    private SeckillProductSkuService seckillProductSkuService;
+    private SeckillProductSkuDubboService seckillProductSkuService;
 
     private final RedisService redisService;
     private final ObjectMapper objectMapper;

@@ -5,7 +5,7 @@ import com.helmsail.seckill.common.exception.BizException;
 /**
  * 用户 Dubbo 服务接口
  */
-public interface UserService {
+public interface UserDubboService {
 
     /**
      * 用户登录

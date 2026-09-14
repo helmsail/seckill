@@ -1,7 +1,7 @@
 package com.helmsail.seckill.job.handler;
 
 import com.helmsail.seckill.base.mq.MqTopic;
-import com.helmsail.seckill.base.order.SeckillOrderService;
+import com.helmsail.seckill.base.order.SeckillOrderDubboService;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +18,8 @@ import java.util.List;
  *
  * 扫描创建超过 TIMEOUT_MINUTES 仍为待支付的订单，补发立即关单消息，
  * 复用关单消费者链路（关闭 + 库存/限购回补）。
- * 阈值需大于延迟消息时长（10 分钟），避免与正常链路重复。
+ * 阈值需大于延迟消息时长（10 分钟）：正常链路先跑，只补漏不误抢。
+ * 补发失败无需额外处理——订单未关，下一轮扫描会再次捞起（任务自身即重试器）。
  */
 @Slf4j
 @Service
@@ -32,7 +33,7 @@ public class OrderTimeoutJobHandler {
     private static final int BATCH_LIMIT = 100;
 
     @DubboReference
-    private SeckillOrderService seckillOrderService;
+    private SeckillOrderDubboService seckillOrderService;
 
     private final RocketMQTemplate rocketMQTemplate;
 
@@ -44,15 +45,26 @@ public class OrderTimeoutJobHandler {
         }
         int sent = 0;
         for (String orderNo : orderNos) {
-            try {
-                // 携带链路信息：traceId 透传至关单消费链路
-                Message<String> message = BaggageUtils.buildMessage(orderNo);
-                rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message);
+            if (resendCloseMessage(orderNo)) {
                 sent++;
-            } catch (Exception e) {
-                log.error("补发关单消息失败: orderNo={}", orderNo, e);
             }
         }
         log.info("订单超时补偿完成: 扫描={}, 补发={}", orderNos.size(), sent);
+    }
+
+    /**
+     * 补发立即关单消息（携带链路信息，traceId 透传至关单消费链路）
+     *
+     * 失败仅记日志：订单仍未关闭，下一轮扫描会再次捞起（任务自身即重试器）。
+     */
+    private boolean resendCloseMessage(String orderNo) {
+        try {
+            Message<String> message = BaggageUtils.buildMessage(orderNo);
+            rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message);
+            return true;
+        } catch (Exception e) {
+            log.error("补发关单消息失败: orderNo={}", orderNo, e);
+            return false;
+        }
     }
 }

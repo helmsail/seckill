@@ -3,10 +3,10 @@ package com.helmsail.seckill.admin.controller;
 import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.support.api.product.ProductDTO;
+import com.helmsail.seckill.support.api.product.ProductDubboService;
 import com.helmsail.seckill.support.api.product.ProductPageQuery;
-import com.helmsail.seckill.support.api.product.ProductService;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
-import com.helmsail.seckill.support.api.sku.SkuService;
+import com.helmsail.seckill.support.api.sku.SkuDubboService;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
@@ -22,10 +22,10 @@ import org.springframework.web.bind.annotation.*;
 public class SupportProductController {
 
     @DubboReference
-    private ProductService productService;
+    private ProductDubboService productService;
 
     @DubboReference
-    private SkuService skuService;
+    private SkuDubboService skuService;
 
     /**
      * 分页查询主域商品

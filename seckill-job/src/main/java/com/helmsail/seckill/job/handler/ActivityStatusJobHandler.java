@@ -23,7 +23,7 @@ import java.util.List;
 public class ActivityStatusJobHandler {
 
     @DubboReference
-    private ActivityService activityService;
+    private ActivityDubboService activityService;
 
     @XxlJob("activityStatusJob")
     public void execute() {

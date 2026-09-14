@@ -3,7 +3,7 @@ package com.helmsail.seckill.service.pay;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.SeckillOrderDTO;
-import com.helmsail.seckill.base.order.SeckillOrderService;
+import com.helmsail.seckill.base.order.SeckillOrderDubboService;
 import com.helmsail.seckill.base.order.SeckillOrderStatus;
 import com.helmsail.seckill.base.order.SeckillOrderSyncEvent;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
@@ -14,6 +14,7 @@ import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.common.tracing.UserContext;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.helmsail.seckill.support.api.pay.PayChannelType;
+import com.helmsail.seckill.support.api.pay.PayGatewayDubboService;
 import com.helmsail.seckill.support.api.pay.PayNotifyResult;
 import com.helmsail.seckill.support.api.pay.PayRequest;
 import com.helmsail.seckill.support.api.pay.PayTradeStatus;
@@ -31,26 +32,41 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 收银台支付服务（两入口）
+ *
+ * prePay：待支付订单出二维码（渠道预创建 + 缓存）；
+ * payCallback：渠道异步回调——验签核对后锁内完成支付（条件更新 + 清码 + 主域同步），是支付完成的唯一写路径。
+ *
+ * 订单状态查询见 order 包的 OrderQueryService（纯读，不感知渠道）。
+ * 所有"转为 PAID"的核对与写入均在 KEY_PAY_LOCK 锁内完成（check-then-act 防竞态）。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PayService {
 
+    /** 二维码缓存有效期（秒） */
     private static final int QR_CODE_CACHE_TTL = 10 * 60;
 
     /** 含 paySuccess 写路径（条件更新幂等），禁用自动重试保持写语义确定 */
     @DubboReference(retries = 0)
-    private SeckillOrderService seckillOrderService;
+    private SeckillOrderDubboService seckillOrderService;
 
-    /** 支付渠道 Dubbo 服务（与本地类同名，使用全限定名区分） */
-    /** 含 preCreate 写路径（渠道预创建），禁用自动重试防止重复建单 */
+    /** 支付渠道网关（preCreate/verifyNotify 含渠道调用，禁自动重试） */
     @DubboReference(retries = 0)
-    private com.helmsail.seckill.support.api.pay.PayService supportPayService;
+    private PayGatewayDubboService payGatewayService;
+
     private final RedisService redisService;
     private final RedissonClient redissonClient;
     private final RocketMQTemplate rocketMQTemplate;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 预支付：获取支付二维码
+     *
+     * 归属与状态校验先于缓存读取：缓存键不含 userId，命中直达会绕过校验。
+     */
     public String prePay(String orderNo) {
         // 1. 查询订单（不存在由 base 抛 ORDER_NOT_FOUND）
         SeckillOrderDTO order = seckillOrderService.getByOrderNo(orderNo);
@@ -78,7 +94,7 @@ public class PayService {
         payRequest.setSubject("秒杀活动订单");
         payRequest.setOutTradeNo(order.getOrderNo());
         payRequest.setTotalAmount(String.valueOf(order.getPayAmount()));
-        String qrCode = supportPayService.preCreate(PayChannelType.MOCK, payRequest);
+        String qrCode = payGatewayService.preCreate(PayChannelType.MOCK, payRequest);
 
         // 6. 缓存二维码
         redisService.set(cacheKey, qrCode, QR_CODE_CACHE_TTL, TimeUnit.SECONDS);
@@ -87,14 +103,15 @@ public class PayService {
     }
 
     /**
-     * 支付回调（渠道异步通知原始参数）
+     * 支付回调（渠道异步通知原始参数）——支付完成唯一写路径
      *
-     * 模拟验签：Mock 渠道恒通过；接入真实渠道时替换 PayChannel.verifyNotify 的真实验签即可。
-     * 校验链：验签 → 交易状态 → 订单存在 → 订单待支付 → 金额一致 → 状态流转（base 条件更新）。
+     * Mock 场景：按 preCreate 返回的操作说明访问本接口即模拟支付成功；
+     * 接入真实渠道时替换 PayChannel.verifyNotify 的真实验签即可。
+     * 校验链：验签 → 交易状态过滤 → 加锁 → 订单核对（状态分流 + 金额）→ 转 PAID。
      */
     public void payCallback(Map<String, String> params) {
         // 1. 渠道验签 + 解析
-        PayNotifyResult notify = supportPayService.verifyNotify(PayChannelType.MOCK, params);
+        PayNotifyResult notify = payGatewayService.verifyNotify(PayChannelType.MOCK, params);
         if (notify == null || !notify.isValid()) {
             throw new BizException(ResultEnum.FORBIDDEN.getCode(), "支付回调验签失败");
         }
@@ -115,9 +132,18 @@ public class PayService {
             // 2. 订单核对：存在 + 待支付 + 金额一致
             SeckillOrderDTO order = seckillOrderService.getByOrderNo(orderNo);
             if (order.getOrderStatus() != SeckillOrderStatus.PENDING) {
-                log.warn("回调订单状态非待支付，忽略: orderNo={}, status={}", orderNo, order.getOrderStatus());
+                if (order.getOrderStatus() == SeckillOrderStatus.PAID) {
+                    // 重复回调：订单已支付，幂等忽略
+                    log.warn("重复支付回调，幂等忽略: orderNo={}", orderNo);
+                    return;
+                }
+                // CLOSED：关单后渠道到账（回调延迟/关单误判）。生产环境应触发自动退款；
+                // 本项目明确不做退款，降级为结构化告警 + 人工处理
+                log.error("关单后收到支付成功回调，需人工处理（生产需自动退款）: orderNo={}, tradeNo={}, amount={}, notifyTime={}",
+                        orderNo, notify.getTradeNo(), notify.getTotalAmount(), LocalDateTime.now());
                 return;
             }
+            // 金额核对：缺省跳过（兼容未回传金额的渠道）；格式非法/不一致均拒绝
             if (notify.getTotalAmount() != null) {
                 BigDecimal notifyAmount;
                 try {
@@ -130,13 +156,9 @@ public class PayService {
                 }
             }
 
-            // 3. 状态流转（重复回调/关单竞态由条件更新兜底）
-            seckillOrderService.paySuccess(orderNo, notify.getTradeNo());
-
-            // 4. 清除二维码缓存
-            redisService.delete(String.format(SeckillRedisKey.KEY_PAY_QRCODE, orderNo));
-
-            // 5. 同步成功订单到主域（发送失败不回滚支付，漏同步由对账补偿）
+            // 3. 支付完成：条件更新（重复/竞态幂等）→ 清二维码缓存 → 同步主域（发送失败不回滚支付，漏同步由对账补偿）
+            seckillOrderService.paySuccess(order.getOrderNo(), notify.getTradeNo());
+            redisService.delete(String.format(SeckillRedisKey.KEY_PAY_QRCODE, order.getOrderNo()));
             sendOrderSync(order, notify.getTradeNo());
         } finally {
             if (lock.isHeldByCurrentThread()) {

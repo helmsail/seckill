@@ -2,7 +2,7 @@ package com.helmsail.seckill.support.server.order;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.helmsail.seckill.support.api.order.CreateOrderRequest;
-import com.helmsail.seckill.support.api.order.OrderService;
+import com.helmsail.seckill.support.api.order.OrderDubboService;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,7 @@ import java.util.List;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class OrderServiceImpl implements OrderService {
+public class OrderDubboServiceImpl implements OrderDubboService {
 
     private final OrderMapper orderMapper;
 

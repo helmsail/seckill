@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * SKU Dubbo 服务接口
  */
-public interface SkuService {
+public interface SkuDubboService {
 
     /**
      * 根据 SKU 编号查询

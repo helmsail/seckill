@@ -4,7 +4,7 @@ package com.helmsail.seckill.base.redis;
  * 秒杀域 Redis Key 常量（唯一权威清单）
  *
  * 命名规范：seckill:{域}:{对象}[:{标识}...]
- * 分组顺序即业务生命周期：活动快照 → SKU 运行态 → 用户准入 → 秒杀结果 → 支付 → 补偿
+ * 分组顺序即业务生命周期：活动快照 → SKU 运行态 → 用户准入 → 秒杀结果 → 消费幂等标记 → 支付 → 补偿
  * 全项目统一经本清单引用，禁止散落字符串硬编码
  */
 public final class SeckillRedisKey {
@@ -45,6 +45,14 @@ public final class SeckillRedisKey {
 
     /** 秒杀结果（标识：traceId） */
     public static final String KEY_SECKILL_RESULT = "seckill:result:%s";
+
+    // ========== 消费幂等标记（重投重放的扣减去重依据：deduct 原子写入，回滚/终局处理后清理，TTL 24h） ==========
+
+    /** 库存扣减标记（标识：traceId；value=已扣数量，存在即视为本请求已扣减，重放跳过） */
+    public static final String KEY_DEDUCT_STOCK = "seckill:deduct:stock:%s";
+
+    /** 限购扣减标记（标识：traceId；value=已扣数量，存在即视为本请求已扣减，重放跳过） */
+    public static final String KEY_DEDUCT_LIMIT = "seckill:deduct:limit:%s";
 
     // ========== 支付（二维码缓存 / 回调锁） ==========
 

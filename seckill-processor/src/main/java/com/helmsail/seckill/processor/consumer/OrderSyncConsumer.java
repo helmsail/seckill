@@ -6,7 +6,7 @@ import com.helmsail.seckill.base.mq.MqTopic;
 import com.helmsail.seckill.base.order.SeckillOrderSyncEvent;
 import com.helmsail.seckill.common.tracing.mq.BaggageUtils;
 import com.helmsail.seckill.support.api.order.CreateOrderRequest;
-import com.helmsail.seckill.support.api.order.OrderService;
+import com.helmsail.seckill.support.api.order.OrderDubboService;
 import com.helmsail.seckill.support.api.order.OrderSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +34,7 @@ import java.nio.charset.StandardCharsets;
 public class OrderSyncConsumer implements RocketMQListener<MessageExt> {
 
     @DubboReference
-    private OrderService supportOrderService;
+    private OrderDubboService supportOrderService;
 
     private final ObjectMapper objectMapper;
 

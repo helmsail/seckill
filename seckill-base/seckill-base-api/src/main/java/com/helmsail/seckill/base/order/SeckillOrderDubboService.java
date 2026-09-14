@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * 秒杀订单 Dubbo 服务接口
  */
-public interface SeckillOrderService {
+public interface SeckillOrderDubboService {
 
     /**
      * 创建订单（订单号自动生成）

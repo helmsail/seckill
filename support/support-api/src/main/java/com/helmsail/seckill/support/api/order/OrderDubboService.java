@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * 订单 Dubbo 服务接口
  */
-public interface OrderService {
+public interface OrderDubboService {
 
     /**
      * 创建订单（按 orderNo 幂等：重复创建返回已有订单）

@@ -6,7 +6,7 @@ import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.PageResult;
 import com.helmsail.seckill.support.api.product.ProductDTO;
 import com.helmsail.seckill.support.api.product.ProductPageQuery;
-import com.helmsail.seckill.support.api.product.ProductService;
+import com.helmsail.seckill.support.api.product.ProductDubboService;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -21,7 +21,7 @@ import java.util.List;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class ProductServiceImpl implements ProductService {
+public class ProductDubboServiceImpl implements ProductDubboService {
 
     private final ProductMapper productMapper;
 

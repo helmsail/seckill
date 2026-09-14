@@ -3,7 +3,7 @@ package com.helmsail.seckill.admin.controller;
 import com.helmsail.seckill.admin.vo.ActivityDetailVO;
 import com.helmsail.seckill.base.activity.*;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
-import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
 import com.helmsail.seckill.common.result.Result;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,10 +26,10 @@ public class ActivityController {
 
     /** 读写混合：写操作（create/delete/update/状态流转）非幂等，禁用自动重试 */
     @DubboReference(retries = 0)
-    private ActivityService activityService;
+    private ActivityDubboService activityService;
 
     @DubboReference
-    private SeckillProductSkuService seckillProductSkuService;
+    private SeckillProductSkuDubboService seckillProductSkuService;
 
     /**
      * 创建活动

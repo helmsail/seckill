@@ -6,7 +6,7 @@ import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.common.user.Role;
 import com.helmsail.seckill.support.api.user.LoginRequest;
 import com.helmsail.seckill.support.api.user.LoginResponse;
-import com.helmsail.seckill.support.api.user.UserService;
+import com.helmsail.seckill.support.api.user.UserDubboService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     @DubboReference
-    private UserService userService;
+    private UserDubboService userService;
 
     /**
      * 登录（管理端入口：仅运营人员可登录）

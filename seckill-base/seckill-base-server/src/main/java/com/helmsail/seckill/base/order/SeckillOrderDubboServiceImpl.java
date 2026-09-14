@@ -26,7 +26,7 @@ import java.util.List;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class SeckillOrderServiceImpl implements SeckillOrderService {
+public class SeckillOrderDubboServiceImpl implements SeckillOrderDubboService {
 
     private final SeckillOrderMapper seckillOrderMapper;
     private final SnowflakeIdGenerator snowflakeIdGenerator;
@@ -161,6 +161,7 @@ public class SeckillOrderServiceImpl implements SeckillOrderService {
         dto.setOrderStatus(SeckillOrderStatus.byCode(order.getOrderStatus()));
         dto.setPaidTime(order.getPaidTime());
         dto.setTradeNo(order.getTradeNo());
+        dto.setTraceId(order.getTraceId());
         return dto;
     }
 }

@@ -1,5 +1,5 @@
 server:
-  port: 18083
+  port: ${JOB_PORT}
 
 spring:
   application:
@@ -37,6 +37,6 @@ xxl:
       addresses: ${XXL_ADMIN_ADDR}
     executor:
       appname: seckill-job
-      port: 19999
-      logpath: /data/applogs/xxl-job/jobhandler
+      port: ${XXL_EXECUTOR_PORT}
+      logpath: ${XXL_EXECUTOR_LOGPATH}
       logretentiondays: 30

@@ -10,7 +10,7 @@ import java.util.List;
  * sk_product_sku 为活动与 SKU 的聚合配置表（物理删除）。
  * 状态规则收敛在服务端：添加/删除仅待开始；上架/下架非终态可用。
  */
-public interface SeckillProductSkuService {
+public interface SeckillProductSkuDubboService {
 
     /**
      * 批量添加（仅待开始状态可用）

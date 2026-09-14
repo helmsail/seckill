@@ -5,7 +5,7 @@ import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
-import com.helmsail.seckill.support.api.sku.SkuService;
+import com.helmsail.seckill.support.api.sku.SkuDubboService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -27,7 +27,7 @@ import java.util.List;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class SkuServiceImpl implements SkuService {
+public class SkuDubboServiceImpl implements SkuDubboService {
 
     /** 变更类型：扣减 */
     private static final int CHANGE_TYPE_DEDUCT = 1;

@@ -1,5 +1,5 @@
 server:
-  port: 18086
+  port: ${SUPPORT_PORT}
 
 spring:
   application:
@@ -30,7 +30,7 @@ dubbo:
     address: nacos://${NACOS_ADDR}?username=${NACOS_USERNAME}&password=${NACOS_PASSWORD}&group=SECKILL_DUBBO
   protocol:
     name: dubbo
-    port: 28080
+    port: ${SUPPORT_DUBBO_PORT}
 
 jwt:
   secret: ${JWT_SECRET}

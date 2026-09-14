@@ -2,14 +2,13 @@ package com.helmsail.seckill.support.server.pay;
 
 import com.helmsail.seckill.support.api.pay.PayChannelType;
 import com.helmsail.seckill.support.api.pay.PayNotifyResult;
-import com.helmsail.seckill.support.api.pay.PayTradeResult;
 
 import java.util.Map;
 
 /**
  * 支付渠道
  *
- * 各渠道实现自身的支付能力，由 PayChannelRouter 统一分发。
+ * 各渠道实现自身的支付能力，由 PayChannelFactory 按渠道类型统一取用。
  */
 public interface PayChannel {
 
@@ -35,12 +34,4 @@ public interface PayChannel {
      * @return 验签与解析结果
      */
     PayNotifyResult verifyNotify(Map<String, String> params);
-
-    /**
-     * 主动查询交易状态
-     *
-     * @param outTradeNo 商户订单号
-     * @return 交易查询结果
-     */
-    PayTradeResult queryTrade(String outTradeNo);
 }

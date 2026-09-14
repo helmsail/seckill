@@ -6,7 +6,7 @@ import com.helmsail.seckill.common.result.PageResult;
 /**
  * 商品 Dubbo 服务接口
  */
-public interface ProductService {
+public interface ProductDubboService {
 
     /**
      * 根据商品编号查询

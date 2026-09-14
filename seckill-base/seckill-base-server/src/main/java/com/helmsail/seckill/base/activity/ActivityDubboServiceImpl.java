@@ -25,7 +25,7 @@ import java.util.List;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class ActivityServiceImpl implements ActivityService {
+public class ActivityDubboServiceImpl implements ActivityDubboService {
 
     /** 限购上限（sk_activity.purchase_limit 列为 TINYINT） */
     private static final int PURCHASE_LIMIT_MAX = 127;

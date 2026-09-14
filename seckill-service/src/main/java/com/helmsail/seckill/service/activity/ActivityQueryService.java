@@ -3,10 +3,10 @@ package com.helmsail.seckill.service.activity;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
-import com.helmsail.seckill.base.activity.ActivityService;
+import com.helmsail.seckill.base.activity.ActivityDubboService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
-import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
@@ -35,10 +35,10 @@ import java.util.Map;
 public class ActivityQueryService {
 
     @DubboReference
-    private ActivityService activityService;
+    private ActivityDubboService activityService;
 
     @DubboReference
-    private SeckillProductSkuService seckillProductSkuService;
+    private SeckillProductSkuDubboService seckillProductSkuService;
 
     private final RedisService redisService;
     private final ObjectMapper objectMapper;

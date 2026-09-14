@@ -9,7 +9,7 @@ import java.util.List;
  *
  * 状态操作均为语义化方法，状态规则全部收敛在服务端
  */
-public interface ActivityService {
+public interface ActivityDubboService {
 
     /**
      * 创建活动

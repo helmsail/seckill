@@ -10,7 +10,7 @@ import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.user.LoginRequest;
 import com.helmsail.seckill.support.api.user.LoginResponse;
 import com.helmsail.seckill.support.api.user.UserDTO;
-import com.helmsail.seckill.support.api.user.UserService;
+import com.helmsail.seckill.support.api.user.UserDubboService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -25,7 +25,7 @@ import java.util.Map;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class UserServiceImpl implements UserService {
+public class UserDubboServiceImpl implements UserDubboService {
 
     private final UserMapper userMapper;
     private final JwtUtils jwtUtils;

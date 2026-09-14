@@ -1,13 +1,13 @@
 package com.helmsail.seckill.job.handler;
 
 import com.helmsail.seckill.base.activity.ActivityDTO;
-import com.helmsail.seckill.base.activity.ActivityService;
+import com.helmsail.seckill.base.activity.ActivityDubboService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
-import com.helmsail.seckill.base.productsku.SeckillProductSkuService;
+import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.support.api.sku.SkuService;
+import com.helmsail.seckill.support.api.sku.SkuDubboService;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,13 +34,13 @@ import java.util.stream.Collectors;
 public class ActivityRecoveryJobHandler {
 
     @DubboReference
-    private ActivityService activityService;
+    private ActivityDubboService activityService;
 
     @DubboReference
-    private SeckillProductSkuService seckillProductSkuService;
+    private SeckillProductSkuDubboService seckillProductSkuService;
 
     @DubboReference
-    private SkuService skuService;
+    private SkuDubboService skuService;
 
     private final RedisService redisService;
 

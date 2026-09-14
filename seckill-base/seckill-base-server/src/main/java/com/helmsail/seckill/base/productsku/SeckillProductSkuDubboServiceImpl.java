@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 @Service
 @DubboService
 @RequiredArgsConstructor
-public class SeckillProductSkuServiceImpl implements SeckillProductSkuService {
+public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubboService {
 
     private static final int SHELF_ON = 1;
     private static final int SHELF_OFF = 0;

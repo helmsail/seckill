@@ -150,7 +150,7 @@ services:
       sentinel-dashboard:
         condition: service_started
     ports:
-      - "18080:18080"
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
 
   seckill-base:
     build: ./seckill-base/seckill-base-server
@@ -164,7 +164,7 @@ services:
       nacos:
         condition: service_started
     ports:
-      - "18081:18081"
+      - "${BASE_SERVER_PORT}:${BASE_SERVER_PORT}"
 
   seckill-admin:
     build: ./seckill-admin
@@ -180,7 +180,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "18082:18082"
+      - "${ADMIN_PORT}:${ADMIN_PORT}"
 
   seckill-job:
     build: ./seckill-job
@@ -198,7 +198,7 @@ services:
       xxl-job-admin:
         condition: service_started
     ports:
-      - "18083:18083"
+      - "${JOB_PORT}:${JOB_PORT}"
 
   seckill-service:
     build: ./seckill-service
@@ -214,7 +214,7 @@ services:
       rocketmq-namesrv:
         condition: service_started
     ports:
-      - "18084:18084"
+      - "${SERVICE_PORT}:${SERVICE_PORT}"
 
   seckill-processor:
     build: ./seckill-processor
@@ -230,7 +230,7 @@ services:
       rocketmq-namesrv:
         condition: service_started
     ports:
-      - "18085:18085"
+      - "${PROCESSOR_PORT}:${PROCESSOR_PORT}"
 
   seckill-support:
     build: ./support/support-server
@@ -244,7 +244,7 @@ services:
       nacos:
         condition: service_started
     ports:
-      - "18086:18086"
+      - "${SUPPORT_PORT}:${SUPPORT_PORT}"
 
 volumes:
   mysql-data:

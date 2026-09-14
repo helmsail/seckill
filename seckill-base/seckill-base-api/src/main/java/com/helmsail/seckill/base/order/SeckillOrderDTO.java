@@ -25,4 +25,7 @@ public class SeckillOrderDTO implements Serializable {
     private SeckillOrderStatus orderStatus;
     private LocalDateTime paidTime;
     private String tradeNo;
+
+    /** 幂等键（uk_user_trace 去重依据；回补/补偿按此定位扣减标记） */
+    private String traceId;
 }
