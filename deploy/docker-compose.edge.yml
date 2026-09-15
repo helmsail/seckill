@@ -1,0 +1,31 @@
+# 秒杀系统 · 服务器部署拆分（台 8）——gateway + web（前端 nginx）
+#
+# 启动：docker compose -f docker-compose.edge.yml up -d        （镜像从 .env 的 IMAGE_REGISTRY 拉取，无需源码/构建环境）
+# 更新：docker compose -f docker-compose.edge.yml pull && docker compose -f docker-compose.edge.yml up -d
+#
+# 必要项提示（勿删）：
+#   - web 的 nginx 反向代理写的是容器名（seckill-gateway）——web 必须与 gateway 同机同 compose，
+#     不能单独迁走（跨机容器名不互通，除非改 nginx 配置）；
+#   - 对外只需暴露 web(18087)；gateway(18080) 供排查直连，可不对外；
+#   - gateway 不依赖注册中心解析自身，无需注册 IP 配置；web 通过 proxy_pass 直连容器名
+name: seckill-edge
+
+services:
+
+  seckill-gateway:
+    image: ${IMAGE_REGISTRY}/seckill-gateway:${IMAGE_TAG}
+    container_name: seckill-gateway
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+
+  seckill-web:
+    image: ${IMAGE_REGISTRY}/seckill-web:${IMAGE_TAG}
+    container_name: seckill-web
+    restart: unless-stopped
+    depends_on:
+      seckill-gateway:
+        condition: service_started
+    ports:
+      - "${WEB_PORT}:80"

@@ -1,0 +1,23 @@
+# 秒杀系统 · 服务器部署拆分（台 2~4，三台各起一份）——service
+#
+# 启动（每台各执行）：docker compose -f docker-compose.service.yml up -d        （镜像从 .env 的 IMAGE_REGISTRY 拉取）
+# 更新：docker compose -f docker-compose.service.yml pull && docker compose -f docker-compose.service.yml up -d
+#
+# 必要项提示（勿删）：
+#   - SPRING_CLOUD_NACOS_DISCOVERY_IP=宿主内网 IP：网关按此地址负载均衡到本实例；
+#   - DUBBO_IP_TO_REGISTRY=宿主内网 IP：Dubbo 调用同样不能注册容器内网 IP；
+#   - 单 JVM 独占整机：堆用默认（≈机器内存 1/4），压测暴露不足再显式调
+name: seckill-service
+
+services:
+
+  seckill-service:
+    image: ${IMAGE_REGISTRY}/seckill-service:${IMAGE_TAG}
+    container_name: seckill-service
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ${HOST_IP}
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${SERVICE_PORT}:${SERVICE_PORT}"

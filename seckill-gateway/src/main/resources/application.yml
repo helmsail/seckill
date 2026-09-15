@@ -34,7 +34,7 @@ spring:
     nacos:
       # 服务发现：仅用于网关 lb:// 解析后端 Web 实例（隔离靠 group，namespace 保持 public）
       # 未接配置中心（nacos-config 依赖已移除）：网关 Spring 配置本地维护；
-      # Nacos 侧动态配置仅保留 Sentinel 限流规则（走下方 datasource，独立连接，不经配置中心）
+      # Sentinel 限流规则支持 Nacos 动态通道（当前未在 Nacos 维护数据，实际生效代码内兜底规则）
       discovery:
         server-addr: ${NACOS_ADDR}
         username: ${NACOS_USERNAME}
@@ -47,8 +47,8 @@ spring:
       transport:
         dashboard: ${SENTINEL_DASHBOARD_ADDR}
       datasource:
-        # 规则在 Nacos 界面维护（非本地文件）：namespace=seckill-sentinel，dataId=seckill-gateway-gw-flow.json，group=SENTINEL_GROUP
-        # 拉取失败时由 GatewayRuleInitializer 装载兜底规则，限流不失效
+        # 动态规则通道（当前未在 Nacos 维护数据）：namespace=seckill-sentinel，dataId=seckill-gateway-gw-flow.json，group=SENTINEL_GROUP
+        # Nacos 未配置或拉取失败时，由 GatewayRuleInitializer 装载兜底规则（C 端 3500 / 运营端 500 QPS），限流不失效
         gw-flow:
           nacos:
             server-addr: ${NACOS_ADDR}

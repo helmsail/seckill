@@ -1,0 +1,47 @@
+# 秒杀系统 · 服务器部署拆分（台 5）——base + processor + support
+#
+# 启动：docker compose -f docker-compose.core.yml up -d        （镜像从 .env 的 IMAGE_REGISTRY 拉取，无需源码/构建环境）
+# 更新：docker compose -f docker-compose.core.yml pull && docker compose -f docker-compose.core.yml up -d
+#
+# 必要项提示（勿删）：
+#   - 本台 3 个 JVM 混部：堆必须显式（JAVA_TOOL_OPTIONS），否则各按宿主机内存 1/4 开堆会挤爆；
+#   - DUBBO_IP_TO_REGISTRY=宿主内网 IP：跨机调用不能注册容器内网 IP；
+#   - Dubbo 端口（base 28081 / support 28080）与业务端口都做宿主映射：跨机注册后按此访问
+name: seckill-core
+
+services:
+
+  seckill-base:
+    image: ${IMAGE_REGISTRY}/seckill-base:${IMAGE_TAG}
+    container_name: seckill-base
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms3g -Xmx3g"
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${BASE_SERVER_PORT}:${BASE_SERVER_PORT}"
+      - "${BASE_DUBBO_PORT}:${BASE_DUBBO_PORT}"
+
+  seckill-processor:
+    image: ${IMAGE_REGISTRY}/seckill-processor:${IMAGE_TAG}
+    container_name: seckill-processor
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms2560m -Xmx2560m"
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${PROCESSOR_PORT}:${PROCESSOR_PORT}"
+
+  seckill-support:
+    image: ${IMAGE_REGISTRY}/seckill-support:${IMAGE_TAG}
+    container_name: seckill-support
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms2g -Xmx2g"
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${SUPPORT_PORT}:${SUPPORT_PORT}"
+      - "${SUPPORT_DUBBO_PORT}:${SUPPORT_DUBBO_PORT}"

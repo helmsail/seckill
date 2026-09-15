@@ -1,0 +1,43 @@
+# 秒杀系统 · 服务器部署拆分（台 1）——MySQL + Redis
+#
+# 启动：docker compose -f docker-compose.data.yml up -d
+# 更新：docker compose -f docker-compose.data.yml down && docker compose -f docker-compose.data.yml up -d
+#       ⚠️ down/up = 冷启动 = 数据重置（initdb 重跑，压测种子自动重建）；仅重启用 restart
+#
+# 说明：MySQL/Redis 参数全部用默认（数据量小足够）；仅保留初始化脚本挂载与健康检查
+name: seckill-data
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: seckill-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: seckill
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      # 首次初始化（数据目录为空时执行）：建库建表 + 基础数据 + 压测种子，按字母序执行
+      # initdb 随部署包分发（本目录 ./initdb）；仓库内种子有更新时需同步更新本目录副本
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD" ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: seckill-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20

@@ -1,0 +1,38 @@
+# 秒杀系统 · 服务器部署拆分（台 7）——admin + job
+#
+# 启动：docker compose -f docker-compose.management.yml up -d        （镜像从 .env 的 IMAGE_REGISTRY 拉取，无需源码/构建环境）
+# 更新：docker compose -f docker-compose.management.yml pull && docker compose -f docker-compose.management.yml up -d
+#
+# 必要项提示（勿删）：
+#   - 本台 2C4G 小机器 + 2 个 JVM 混部：堆必须显式（JAVA_TOOL_OPTIONS）；
+#   - XXL_JOB_EXECUTOR_IP=宿主内网 IP：调度中心（台 6）要按此地址回调执行器，
+#     且执行器端口需宿主映射（见 ports）
+name: seckill-admin
+
+services:
+
+  seckill-admin:
+    image: ${IMAGE_REGISTRY}/seckill-admin:${IMAGE_TAG}
+    container_name: seckill-admin
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms1g -Xmx1g"
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ${HOST_IP}
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${ADMIN_PORT}:${ADMIN_PORT}"
+
+  seckill-job:
+    image: ${IMAGE_REGISTRY}/seckill-job:${IMAGE_TAG}
+    container_name: seckill-job
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xms1g -Xmx1g"
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+      XXL_JOB_EXECUTOR_IP: ${HOST_IP}
+    ports:
+      - "${JOB_PORT}:${JOB_PORT}"
+      # 执行器回调端口（xxl-job-admin 触发任务用）
+      - "${XXL_EXECUTOR_PORT}:${XXL_EXECUTOR_PORT}"
