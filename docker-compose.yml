@@ -6,7 +6,7 @@
 #   3. docker compose up -d --build            （首次启动自动初始化 MySQL：建库建表 + xxl-job 表结构与任务预置，见 docker/mysql/initdb/）
 #
 # ========== 端口（宿主）==========
-#   gateway 18080 | base 18081 | admin 18082 | job 18083 | service 18084 | processor 18085 | support 18086
+#   gateway 18080 | base 18081 | admin 18082 | job 18083 | service 18084 | processor 18085 | support 18086 | web 18087
 #   xxl-job-admin 8080 | nacos 8848/9848 | sentinel-dashboard 8858 | mysql 3306 | redis 6379 | rocketmq 9876/10911
 #
 # 说明：应用容器通过 env_file 注入 .env；中间件配置直接使用 .env 变量替换（compose 自动读取项目根 .env）
@@ -235,3 +235,15 @@ services:
         condition: service_started
     ports:
       - "${SUPPORT_PORT}:${SUPPORT_PORT}"
+
+  seckill-web:
+    # 前端（nginx）：C 端 / 运营端静态页 + /api 反向代理到网关（同源免 CORS）
+    build: ./seckill-web
+    image: seckill-web
+    container_name: seckill-web
+    restart: unless-stopped
+    depends_on:
+      seckill-gateway:
+        condition: service_started
+    ports:
+      - "${WEB_PORT}:80"

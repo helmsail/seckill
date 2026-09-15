@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>秒杀商城</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="logo">秒杀商城</span>
+      <span class="spacer"></span>
+      <span class="who" id="who"></span>
+      <button class="btn btn-sm" id="btnOrders" hidden>查订单</button>
+      <button class="btn btn-sm" id="btnLogout" hidden>退出</button>
+    </div>
+  </header>
+
+  <main class="page narrow">
+    <!-- 登录视图 -->
+    <section id="view-login" hidden>
+      <div class="card login-card">
+        <h1>秒杀商城</h1>
+        <p class="hint">测试账号：zhangsan / lisi / wangwu，密码 123456</p>
+        <form id="formLogin">
+          <div class="field">
+            <label for="loginUser">用户名</label>
+            <input class="input" id="loginUser" required autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="loginPass">密码</label>
+            <input class="input" id="loginPass" type="password" required autocomplete="current-password">
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">登 录</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- 活动列表视图 -->
+    <section id="view-list" hidden>
+      <p class="section-title">活动列表</p>
+      <div id="activityList"></div>
+    </section>
+
+    <!-- 活动详情视图 -->
+    <section id="view-detail" hidden>
+      <div class="row" style="margin-bottom: 12px">
+        <button class="btn btn-sm" id="btnBack">← 返回</button>
+      </div>
+      <div class="card" id="detailHead"></div>
+      <p class="section-title">活动商品</p>
+      <div id="productList"></div>
+    </section>
+  </main>
+
+  <div id="modalRoot"></div>
+  <script src="common.js"></script>
+  <script src="c.js"></script>
+</body>
+</html>

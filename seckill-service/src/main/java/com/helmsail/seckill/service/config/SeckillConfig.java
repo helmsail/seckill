@@ -30,7 +30,7 @@ public class SeckillConfig {
         private int expireSeconds = 24 * 60 * 60;
         /** 抢跑窗口起点：开始前多少秒起视为脚本提前抢购（默认 30 分钟） */
         private int windowFromSeconds = 30 * 60;
-        /** 抢跑窗口终点：距开始不足多少秒起不再拉黑（默认 1 分钟，避免误伤正常用户） */
-        private int windowToSeconds = 60;
+        /** 抢跑窗口终点：距开始不足多少秒起不再拉黑（默认 2 分钟，避免误伤正常用户） */
+        private int windowToSeconds = 2 * 60;
     }
 }

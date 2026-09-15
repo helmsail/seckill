@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * 主域商品 Controller（支撑域只读窗口）
  *
@@ -41,6 +43,14 @@ public class SupportProductController {
     @GetMapping("/{spuNo}")
     public Result<ProductDTO> getBySpuNo(@PathVariable String spuNo) {
         return Result.success(productService.getBySpuNo(spuNo));
+    }
+
+    /**
+     * 查询商品下全部 SKU（管理端选品数据源）
+     */
+    @GetMapping("/{spuNo}/skus")
+    public Result<List<SkuDTO>> listSkusBySpuNo(@PathVariable String spuNo) {
+        return Result.success(skuService.listBySpuNo(spuNo));
     }
 
     /**

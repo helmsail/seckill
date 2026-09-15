@@ -11,7 +11,7 @@ public final class SeckillRedisKey {
 
     private SeckillRedisKey() {}
 
-    // ========== 活动快照（缓存同步任务写入，C 端查询读取；终态由回收任务清理） ==========
+    // ========== 活动快照（缓存同步任务写入，C 端查询读取） ==========
 
     /** 活动信息 Hash（field=activityNo） */
     public static final String KEY_ACTIVITY_INFO = "seckill:activity:info";
@@ -19,16 +19,13 @@ public final class SeckillRedisKey {
     /** 活动商品SKU列表快照（标识：activityNo） */
     public static final String KEY_ACTIVITY_PRODUCT_LIST = "seckill:activity:products:%s";
 
-    // ========== SKU 运行态（预热初始化；库存计数扣减 / 回补 / 终态归还；在售状态随上下架覆盖） ==========
+    // ========== SKU 运行态（预热初始化；库存计数扣减 / 回补；在售状态随上下架覆盖） ==========
 
     /** SKU 库存计数（预热初始化，运行期扣减 / 回补；标识：activityNo:skuNo） */
     public static final String KEY_SKU_STOCK = "seckill:sku:stock:%s:%s";
 
     /** SKU 在售状态（预热初始化，运行期随上下架覆盖；value=1 上架 / 0 下架；标识：activityNo:skuNo） */
     public static final String KEY_SKU_SHELF = "seckill:sku:shelf:%s:%s";
-
-    /** SKU 库存归还完成标记（终态清理跨轮幂等依据，写入后长期保留；标识：activityNo:skuNo） */
-    public static final String KEY_SKU_STOCK_RESTORED = "seckill:sku:stock:restored:%s:%s";
 
     // ========== 用户准入（限流 / 限购 / 黑名单） ==========
 
