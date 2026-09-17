@@ -12,6 +12,7 @@ services:
   mysql:
     image: mysql:8.0
     container_name: seckill-mysql
+    cpus: 4
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
@@ -31,8 +32,10 @@ services:
       retries: 30
 
   redis:
-    image: redis:7-alpine
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/redis:7-alpine
     container_name: seckill-redis
+    cpus: 2
     restart: unless-stopped
     ports:
       - "6379:6379"

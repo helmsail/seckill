@@ -14,6 +14,7 @@ services:
   seckill-admin:
     image: ${IMAGE_REGISTRY}/seckill-admin:${IMAGE_TAG}
     container_name: seckill-admin
+    cpus: 1
     restart: unless-stopped
     env_file: .env
     environment:
@@ -26,10 +27,12 @@ services:
   seckill-job:
     image: ${IMAGE_REGISTRY}/seckill-job:${IMAGE_TAG}
     container_name: seckill-job
+    cpus: 1
     restart: unless-stopped
     env_file: .env
     environment:
-      JAVA_TOOL_OPTIONS: "-Xms1g -Xmx1g"
+      # -Dxxl.job.executor.address=宿主内网 IP（2.4+ 以 address 为准）：执行器注册地址；不配会自报容器内网 IP，跨机回调不通
+      JAVA_TOOL_OPTIONS: "-Xms1g -Xmx1g -Dxxl.job.executor.address=http://${HOST_IP}:${XXL_EXECUTOR_PORT}/"
       DUBBO_IP_TO_REGISTRY: ${HOST_IP}
       XXL_JOB_EXECUTOR_IP: ${HOST_IP}
     ports:

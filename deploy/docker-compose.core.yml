@@ -14,6 +14,7 @@ services:
   seckill-base:
     image: ${IMAGE_REGISTRY}/seckill-base:${IMAGE_TAG}
     container_name: seckill-base
+    cpus: 4
     restart: unless-stopped
     env_file: .env
     environment:
@@ -26,6 +27,7 @@ services:
   seckill-processor:
     image: ${IMAGE_REGISTRY}/seckill-processor:${IMAGE_TAG}
     container_name: seckill-processor
+    cpus: 3
     restart: unless-stopped
     env_file: .env
     environment:
@@ -37,6 +39,7 @@ services:
   seckill-support:
     image: ${IMAGE_REGISTRY}/seckill-support:${IMAGE_TAG}
     container_name: seckill-support
+    cpus: 2
     restart: unless-stopped
     env_file: .env
     environment:

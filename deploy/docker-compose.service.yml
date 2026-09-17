@@ -14,6 +14,7 @@ services:
   seckill-service:
     image: ${IMAGE_REGISTRY}/seckill-service:${IMAGE_TAG}
     container_name: seckill-service
+    cpus: 4
     restart: unless-stopped
     env_file: .env
     environment:

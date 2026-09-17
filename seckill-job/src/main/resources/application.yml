@@ -37,6 +37,8 @@ xxl:
       addresses: ${XXL_ADMIN_ADDR}
     executor:
       appname: seckill-job
+      # 执行器注册地址（2.4+ 优先于 ip）：必须为宿主内网 IP，否则自报容器内网 IP 导致跨机回调不通
+      address: http://${HOST_IP}:${XXL_EXECUTOR_PORT}/
       port: ${XXL_EXECUTOR_PORT}
       logpath: ${XXL_EXECUTOR_LOGPATH}
       logretentiondays: 30

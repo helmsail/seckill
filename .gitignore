@@ -38,3 +38,8 @@ build/
 ### 本地环境文档（私有，不入库）###
 docs/本地环境地址与账号.md
 docs/部署配置参数说明.md
+docs/服务器实例清单.md
+
+### 压测监控（本地采集脚本与 CSV 历史，不入库）###
+deploy/monitor-ecs.ps1
+deploy/monitor/

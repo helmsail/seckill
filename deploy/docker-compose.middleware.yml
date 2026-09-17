@@ -11,8 +11,10 @@ name: seckill-middleware
 services:
 
   nacos:
-    image: nacos/nacos-server:v2.3.2
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/nacos:v2.3.2
     container_name: seckill-nacos
+    cpus: 1
     restart: unless-stopped
     environment:
       MODE: standalone
@@ -29,6 +31,7 @@ services:
   rocketmq-namesrv:
     image: ${IMAGE_REGISTRY}/seckill-rocketmq:${IMAGE_TAG}
     container_name: seckill-rocketmq-namesrv
+    cpus: 0.5
     restart: unless-stopped
     command: sh mqnamesrv
     environment:
@@ -39,8 +42,10 @@ services:
   rocketmq-broker:
     image: ${IMAGE_REGISTRY}/seckill-rocketmq:${IMAGE_TAG}
     container_name: seckill-rocketmq-broker
+    cpus: 2
     restart: unless-stopped
-    command: sh mqbroker -c /home/rocketmq/conf/broker.conf
+    # 启动时把 .env 的 HOST_IP 注入 broker.conf（brokerIP1=宿主 IP，跨机应用按此连接）
+    command: sh -c "sed 's/__HOST_IP__/${HOST_IP}/' /conf-template/broker.conf > /tmp/broker.conf && sh mqbroker -c /tmp/broker.conf"
     depends_on:
       - rocketmq-namesrv
     environment:
@@ -50,12 +55,14 @@ services:
       - "10909:10909"
       - "10911:10911"
     volumes:
-      # broker.conf 随部署包分发：把 docker/rocketmq/broker.conf 复制到本目录（与 compose 同级）
-      - ./broker.conf:/home/rocketmq/conf/broker.conf:ro
+      # broker.conf 随部署包分发（模板 readonly；启动时注入宿主 IP 到容器内 /tmp）
+      - ./broker.conf:/conf-template/broker.conf:ro
 
   xxl-job-admin:
-    image: xuxueli/xxl-job-admin:2.5.0
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/xxl-job-admin:2.5.0
     container_name: seckill-xxl-job-admin
+    cpus: 1
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -70,8 +77,10 @@ services:
       - "8080:8080"
 
   sentinel-dashboard:
-    image: bladex/sentinel-dashboard:1.8.8
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/sentinel-dashboard:1.8.8
     container_name: seckill-sentinel-dashboard
+    cpus: 0.5
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai

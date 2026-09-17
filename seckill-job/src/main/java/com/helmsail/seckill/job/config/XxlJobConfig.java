@@ -20,6 +20,10 @@ public class XxlJobConfig {
     @Value("${xxl.job.executor.port}")
     private int port;
 
+    /** 执行器注册地址（容器部署必须显式指定宿主 IP，否则自动探测上报容器内网 IP 导致跨机回调不通） */
+    @Value("${xxl.job.executor.address:}")
+    private String address;
+
     @Value("${xxl.job.executor.logpath}")
     private String logPath;
 
@@ -31,6 +35,7 @@ public class XxlJobConfig {
         XxlJobSpringExecutor executor = new XxlJobSpringExecutor();
         executor.setAdminAddresses(adminAddresses);
         executor.setAppname(appname);
+        executor.setAddress(address);
         executor.setPort(port);
         executor.setLogPath(logPath);
         executor.setLogRetentionDays(logRetentionDays);

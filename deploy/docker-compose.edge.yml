@@ -15,6 +15,7 @@ services:
   seckill-gateway:
     image: ${IMAGE_REGISTRY}/seckill-gateway:${IMAGE_TAG}
     container_name: seckill-gateway
+    cpus: 4
     restart: unless-stopped
     env_file: .env
     ports:
@@ -23,6 +24,7 @@ services:
   seckill-web:
     image: ${IMAGE_REGISTRY}/seckill-web:${IMAGE_TAG}
     container_name: seckill-web
+    cpus: 0.5
     restart: unless-stopped
     depends_on:
       seckill-gateway:

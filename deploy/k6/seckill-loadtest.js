@@ -25,8 +25,8 @@
  *
  * ── 前置条件 ────────────────────────────────────────────────────
  *   1. 环境已冷启动：setup 自动等待"库存键预热 + 活动 ACTIVE"（≤20 分钟；
- *      种子活动开始时间 = 数据库初始化 +10 分钟，见 deploy/initdb/seckill-init.sql 注释）；
- *   2. 压测账号 lt0001~lt5000（/123456）已由 initdb 种子导入。
+ *      种子活动开始时间 = 数据库初始化 +5 分钟）；
+ *   2. 压测账号 lt00001~lt20000（/123456）已就位（initdb 种子或热插）。
  *
  * ── 指标口径 ────────────────────────────────────────────────────
  *   seckill_duration       秒杀提交耗时（summary 输出 avg/med/p90/p95/p99/max）
@@ -92,7 +92,7 @@ const PAY_RATIO = Math.max(0, Math.min(1, cfgNum('PAY_RATIO', 0.2))); // 0=不�
 
 // ---- 内置默认（种子环境专用，一般不改）----
 const ACTIVITY_NO = 'LT-LOADTEST-001';
-const USER_COUNT = 5000;
+const USER_COUNT = 80000;
 const USER_PREFIX = 'lt';
 const USER_PASSWORD = '123456';
 const BROWSE_RATE = 0; // 混合读流量（列表/商品/库存）；需要时改此值
@@ -100,7 +100,6 @@ const BROWSE_RATE = 0; // 混合读流量（列表/商品/库存）；需要时�
 // 就绪探测与运行节奏
 const READY_TIMEOUT_MS = 20 * 60 * 1000; // 就绪等待上限
 const PROBE_INTERVAL_S = 10;    // 就绪探测间隔（秒）
-const LOGIN_CHUNK = 100;        // 批量登录的并发批大小
 const ITER_SLEEP_S = 1.2;       // 迭代尾部休眠：同用户请求间隔 >1s（令牌桶）
 const SAMPLE_POLL_RATE = 0.01;  // 未支付样本的终态抽查比例
 const POLL_WAIT_S = 2;          // 抽查前的等待（留给 processor 消费）
@@ -154,7 +153,7 @@ export const options = {
       rate: SECKILL_RATE,
       timeUnit: '1s',
       duration: DURATION,
-      preAllocatedVUs: 500, // 本地联调临时值（服务器压测时改回 3500）
+      preAllocatedVUs: 5000, // 服务器压测值（3000/s 实测需 ~4500+ VU）；本地联调（内存有限）时手动改小为 500
       maxVUs: USER_COUNT, // 与账号 1:1，用户不重复
     },
     // 混合读流量（BROWSE_RATE=0 时自动禁用）
@@ -178,9 +177,9 @@ export const options = {
 // 四、内部工具函数
 // ============================================================
 
-/** 账号名：下标 → 前缀+四位序号（默认 lt0001 样式） */
+/** 账号名：下标 → 前缀+五位序号（默认 lt00001 样式） */
 function accountName(index) {
-  return `${USER_PREFIX}${String(index + 1).padStart(4, '0')}`;
+  return `${USER_PREFIX}${String(index + 1).padStart(5, '0')}`;
 }
 
 /** 提取业务码；非 JSON 响应（网关异常页等）返回 http_<status> */
@@ -217,31 +216,23 @@ function waitUntilReady() {
   fail('等待预热/激活超时：确认应用已全量启动、activityCacheJob / activityStatusJob 正常执行');
 }
 
-/** 批量登录全部压测账号（分批并发），返回与账号下标一一对应的 token 数组 */
-function loginAll() {
-  const tokens = new Array(USER_COUNT);
-  for (let start = 0; start < USER_COUNT; start += LOGIN_CHUNK) {
-    const end = Math.min(start + LOGIN_CHUNK, USER_COUNT);
-    const reqs = [];
-    for (let i = start; i < end; i++) {
-      reqs.push({
-        method: 'POST',
-        url: `${BASE_URL}/api/c/user/login`,
-        body: JSON.stringify({ username: accountName(i), password: USER_PASSWORD }),
-        params: { headers: { 'Content-Type': 'application/json' } },
-      });
-    }
-    http.batch(reqs).forEach((res, j) => {
-      let token = null;
-      try { token = res.json().data.token; } catch (e) { /* 解析失败按登录失败处理 */ }
-      if (res.status !== 200 || !token) {
-        fail(`登录失败：${accountName(start + j)}，status=${res.status}，body=${String(res.body).slice(0, 200)}`);
-      }
-      tokens[start + j] = token;
-    });
+/** 懒登录：VU 首次迭代时登录自己的专属账号并缓存 token
+ * （避免 setup 返回大数组被每个 VU 复制解析导致的 OOM）*/
+let vuToken = null;
+function ensureToken(i) {
+  if (vuToken) return vuToken;
+  const res = http.post(
+    `${BASE_URL}/api/c/user/login`,
+    JSON.stringify({ username: accountName(i % USER_COUNT), password: USER_PASSWORD }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { name: 'login' } }
+  );
+  let token = null;
+  try { token = res.json().data.token; } catch (e) { /* 解析失败按登录失败处理 */ }
+  if (res.status !== 200 || !token) {
+    fail(`登录失败：${accountName(i % USER_COUNT)}，status=${res.status}，body=${String(res.body).slice(0, 200)}`);
   }
-  console.log(`[登录] ${USER_COUNT} 个压测账号 token 就绪`);
-  return tokens;
+  vuToken = token;
+  return token;
 }
 
 /** 记录秒杀提交结果（耗时/业务码/HTTP 异常），返回是否受理成功 */
@@ -265,7 +256,7 @@ function waitOrderNo(traceId, token) {
   while (Date.now() < deadline) {
     const res = http.get(
       `${BASE_URL}/api/c/seckill/poll?traceId=${encodeURIComponent(traceId)}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'seckill_poll' } }
     );
     try {
       const vo = res.json().data;
@@ -296,7 +287,7 @@ function simulatePay(seckillRes, token, skuNo) {
   const prepay = http.post(
     `${BASE_URL}/api/c/pay/prepay?orderNo=${encodeURIComponent(orderNo)}`,
     null,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'pay_prepay' } }
   );
   const prepayCode = bizCode(prepay);
   payBiz.add(1, { step: 'prepay', code: prepayCode });
@@ -307,7 +298,7 @@ function simulatePay(seckillRes, token, skuNo) {
     const amount = SKU_PRICE_MAP[skuNo];
     let url = `${BASE_URL}/api/c/pay/callback?out_trade_no=${encodeURIComponent(orderNo)}&trade_status=PAID`;
     if (amount) url += `&total_amount=${amount}`;
-    callbackCode = bizCode(http.get(url));
+    callbackCode = bizCode(http.get(url, { tags: { name: 'pay_callback' } }));
     payBiz.add(1, { step: 'callback', code: callbackCode });
   }
 
@@ -324,7 +315,7 @@ function samplePollFinal(res, token) {
   sleep(POLL_WAIT_S);
   const poll = http.get(
     `${BASE_URL}/api/c/seckill/poll?traceId=${encodeURIComponent(traceId)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'seckill_poll_final' } }
   );
   let status = `poll_http_${poll.status}`;
   try { status = String(poll.json().data && poll.json().data.status); } catch (e) { /* 忽略 */ }
@@ -337,13 +328,13 @@ function samplePollFinal(res, token) {
 
 export function setup() {
   waitUntilReady();
-  return { tokens: loginAll() };
+  return {};
 }
 
-/** 秒杀提交（默认场景）：VU 与账号、SKU 固定绑定 */
-export default function (data) {
+/** 秒杀提交（默认场景）：VU 与账号、SKU 固定绑定（token 懒登录缓存）*/
+export default function () {
   const i = __VU - 1;
-  const token = data.tokens[i % USER_COUNT];
+  const token = ensureToken(i % USER_COUNT);
   const skuNo = SKU_LIST[i % SKU_LIST.length];
 
   const res = http.post(
