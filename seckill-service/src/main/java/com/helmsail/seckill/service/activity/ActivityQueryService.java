@@ -22,11 +22,14 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
- * C 端活动查询服务（纯读）
+ * C 端活动查询服务
  *
- * 三层读取：Caffeine（软/硬过期）→ Redis 快照 → Dubbo 回源。
+ * 三层读取：Caffeine（软/硬过期）→ Redis 快照 → Dubbo 回源；
+ * 回源结果同口径回填 Redis（无 TTL）——读路径为兜底写入者，预热任务仍是常态刷新者；
+ * 回源确认不存在/为空时写短 TTL 负标记（跨实例短路回源，TTL 自清）。
  * 秒杀准入判定已收归 CheckService，本类只负责查询与缓存。
  */
 @Slf4j
@@ -45,6 +48,9 @@ public class ActivityQueryService {
 
     /** 列表缓存条目的键：列表全局唯一，key 仅作条目索引占位 */
     private static final String LIST_CACHE_KEY = "list";
+
+    /** 负标记 TTL（秒）：跨实例短路回源的共享窗口，TTL 自清；不宜过长，保证"新建实体"尽快可见 */
+    private static final long NULL_MARKER_TTL_SECONDS = 60L;
 
     private CaffeineCache<List<ActivityDTO>> activityListCache;
     private CaffeineCache<ActivityDTO> activityInfoCache;
@@ -81,17 +87,43 @@ public class ActivityQueryService {
     }
 
     private ActivityDTO fallbackActivityInfo(String key) {
+        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base
+        if (redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_INFO_NULL, key))) {
+            return null;
+        }
         try {
-            return activityService.getByActivityNo(key);
+            ActivityDTO activity = activityService.getByActivityNo(key);
+            backfillActivityInfo(key, activity);
+            return activity;
         } catch (Exception e) {
-            // 活动不存在：返回 null 走空值缓存（穿透保护），准入检查按“不存在”处理。
+            // 活动不存在：写短 TTL 负标记（跨实例短路回源、自清），返回 null 走空值缓存（穿透保护）
             // DubboConsumerExceptionFilter 已还原业务异常；此处再沿 cause 链兜底运行时/代理的再包装
             BizException bizException = findBizException(e);
             if (bizException != null
                     && SeckillResultEnum.ACTIVITY_NOT_FOUND.getCode().equals(bizException.getCode())) {
+                writeNullMarker(SeckillRedisKey.KEY_ACTIVITY_INFO_NULL, key);
                 return null;
             }
             throw e;
+        }
+    }
+
+    /**
+     * 回源回填：把兜底取到的活动信息同口径写回 Redis（无 TTL，与预热任务写入口径一致）
+     *
+     * 读路径由此成为"兜底写入者"：仅 Redis 未命中时写入，job 的分钟级覆盖仍是常态刷新；
+     * 回填失败仅记日志，不影响本次读取。
+     */
+    private void backfillActivityInfo(String activityNo, ActivityDTO activity) {
+        if (activity == null) {
+            return;
+        }
+        try {
+            redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo,
+                    objectMapper.writeValueAsString(activity));
+            log.info("活动信息回源回填 Redis: activityNo={}", activityNo);
+        } catch (Exception e) {
+            log.warn("活动信息回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);
         }
     }
 
@@ -116,8 +148,13 @@ public class ActivityQueryService {
     }
 
     private List<SeckillProductSkuDTO> fallbackProductList(String activityNo) {
+        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base（空结果按空列表处理）
+        if (redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, activityNo))) {
+            return List.of();
+        }
         List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
         if (rows == null || rows.isEmpty()) {
+            writeNullMarker(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, activityNo);
             return rows;
         }
         // 与快照同口径：剔除库表带出的库存配额与上下架，DB 运行态值不进缓存
@@ -126,7 +163,34 @@ public class ActivityQueryService {
             row.setActivityStock(null);
             row.setShelfStatus(null);
         }
+        backfillProductSnapshot(activityNo, rows);
         return rows;
+    }
+
+    /**
+     * 回源回填：把兜底取到的商品快照同口径写回 Redis（无 TTL）
+     *
+     * 空列表不回填——保留预热任务"空活动不写键"的约定，避免为可删除的空活动留残留键。
+     */
+    private void backfillProductSnapshot(String activityNo, List<SeckillProductSkuDTO> rows) {
+        try {
+            redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
+                    objectMapper.writeValueAsString(rows));
+            log.info("商品快照回源回填 Redis: activityNo={}, size={}", activityNo, rows.size());
+        } catch (Exception e) {
+            log.warn("商品快照回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);
+        }
+    }
+
+    /**
+     * 写"不存在/为空"负标记：短 TTL、TTL 自清、跨实例共享，用于短路回源（不再探测 base）
+     */
+    private void writeNullMarker(String keyPattern, String key) {
+        try {
+            redisService.set(String.format(keyPattern, key), "1", NULL_MARKER_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("负标记写入失败（忽略，不影响本次读取）: key={}", key, e);
+        }
     }
 
     private <T> T parse(String json, Class<T> clazz) {

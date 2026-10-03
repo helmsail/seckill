@@ -2,12 +2,11 @@ package com.helmsail.seckill.base.activity;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
+import com.helmsail.seckill.base.id.SeckillBusinessId;
 import com.helmsail.seckill.base.productsku.SeckillProductSku;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuMapper;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
@@ -32,13 +31,12 @@ public class ActivityDubboServiceImpl implements ActivityDubboService {
 
     private final ActivityMapper activityMapper;
     private final SeckillProductSkuMapper seckillProductSkuMapper;
-    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
     public String create(ActivityRequest request) {
         validate(request);
         Activity activity = new Activity();
-        activity.setActivityNo(SeckillBusinessPrefix.SECKILL_ACTIVITY.buildNo(snowflakeIdGenerator.nextId()));
+        activity.setActivityNo(SeckillBusinessId.SECKILL_ACTIVITY.buildNo());
         activity.setActivityName(request.getActivityName());
         activity.setStartDate(request.getStartDate());
         activity.setEndDate(request.getEndDate());

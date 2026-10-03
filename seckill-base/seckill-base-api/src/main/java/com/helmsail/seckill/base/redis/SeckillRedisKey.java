@@ -11,13 +11,19 @@ public final class SeckillRedisKey {
 
     private SeckillRedisKey() {}
 
-    // ========== 活动快照（缓存同步任务写入，C 端查询读取） ==========
+    // ========== 活动快照（缓存同步任务常态刷新；C 端查询读取，miss 回源时兜底回填 / 写负标记） ==========
 
     /** 活动信息 Hash（field=activityNo） */
     public static final String KEY_ACTIVITY_INFO = "seckill:activity:info";
 
     /** 活动商品SKU列表快照（标识：activityNo） */
     public static final String KEY_ACTIVITY_PRODUCT_LIST = "seckill:activity:products:%s";
+
+    /** 活动不存在负标记（回源确认不存在时写入，短 TTL 自清，跨实例短路回源；值="1"；标识：activityNo） */
+    public static final String KEY_ACTIVITY_INFO_NULL = "seckill:activity:info:null:%s";
+
+    /** 活动商品为空负标记（回源确认无 SKU 时写入，短 TTL 自清，跨实例短路回源；值="1"；标识：activityNo） */
+    public static final String KEY_ACTIVITY_PRODUCT_NULL = "seckill:activity:products:null:%s";
 
     // ========== SKU 运行态（预热初始化；库存计数扣减 / 回补；在售状态随上下架覆盖） ==========
 

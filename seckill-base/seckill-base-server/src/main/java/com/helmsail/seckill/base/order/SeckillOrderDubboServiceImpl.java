@@ -2,10 +2,9 @@ package com.helmsail.seckill.base.order;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.helmsail.seckill.base.id.SeckillBusinessPrefix;
+import com.helmsail.seckill.base.id.SeckillBusinessId;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
-import com.helmsail.seckill.common.id.SnowflakeIdGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
@@ -29,12 +28,11 @@ import java.util.List;
 public class SeckillOrderDubboServiceImpl implements SeckillOrderDubboService {
 
     private final SeckillOrderMapper seckillOrderMapper;
-    private final SnowflakeIdGenerator snowflakeIdGenerator;
 
     @Override
     public String createOrder(CreateSeckillOrderRequest request) {
         SeckillOrder order = new SeckillOrder();
-        order.setOrderNo(SeckillBusinessPrefix.SECKILL_ORDER.buildNo(snowflakeIdGenerator.nextId()));
+        order.setOrderNo(SeckillBusinessId.SECKILL_ORDER.buildNo());
         order.setUserId(request.getUserId());
         order.setActivityNo(request.getActivityNo());
         order.setSkuNo(request.getSkuNo());

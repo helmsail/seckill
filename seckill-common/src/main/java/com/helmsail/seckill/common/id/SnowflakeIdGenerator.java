@@ -2,46 +2,77 @@ package com.helmsail.seckill.common.id;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.util.Collections;
-
 /**
- * 雪花算法 ID 生成器
+ * 雪花算法 ID 生成器（Snowflake，静态单例）
  *
- * 由 IdAutoConfiguration 自动注册。
- * 机器号（datacenterId + workerId，共 10 位）纯自动派生：
- * 优先取本机非回环 IPv4 的后两段，取不到时回退 hostname 哈希。
+ * ── 64 位结构 ──────────────────────────────────────────────
+ *   1  位  符号位（恒 0，保证正数）
+ *   41 位  毫秒时间戳（相对 EPOCH，可用约 69 年）
+ *   10 位  机器 ID（取宿主 IP 第四段）
+ *   12 位  毫秒内序列（单机每毫秒 4096 个）
+ *
+ * ── 生成规则 ───────────────────────────────────────────────
+ *   同一毫秒：序列 +1，溢出则自旋等到下一毫秒；跨入新毫秒：序列归零；
+ *   时钟回拨：≤5ms 等待自愈，>5ms 拒绝生成（宁失败，不产重复 ID）。
+ *
+ * ── 机器号派生（单来源）──────────────────────────────────
+ *   读取环境变量 HOST_IP（部署时按台注入的宿主内网 IP），取 IPv4 第四段；
+ *   缺失/非法则拒绝生成（fail-fast，不静默兜底）。
+ *
+ * 静态单例：全 JVM 唯一实例，类加载时完成机器号派生；
+ * 序列推进在实例内互斥（synchronized），保证并发下 ID 不重不漏。
  */
 @Slf4j
-public class SnowflakeIdGenerator {
+public final class SnowflakeIdGenerator {
 
+    /** 全局唯一实例：类加载即初始化（机器号派生仅一次） */
+    private static final SnowflakeIdGenerator INSTANCE = new SnowflakeIdGenerator();
+
+    // ==================== 位布局 ====================
+
+    /** 起始时间戳（2021-01-01 00:00:00 UTC+8），上线后不可更改 */
     private static final long EPOCH = 1609459200000L;
-    private static final long WORKER_ID_BITS = 5L;
-    private static final long DATACENTER_ID_BITS = 5L;
+
+    /** 机器 ID 位宽（10 位 / 取值 0..255，取宿主 IP 第四段） */
+    private static final long MACHINE_ID_BITS = 10L;
+
+    /** 序列位宽（12 位 / 每毫秒 4096 个）与掩码 */
     private static final long SEQUENCE_BITS = 12L;
     private static final long SEQUENCE_MASK = ~(-1L << SEQUENCE_BITS);
-    private static final long MACHINE_ID_MASK = 0x3FFL; // 10 位
 
-    private final long workerId;
-    private final long datacenterId;
-    private long sequence = 0L;
-    private long lastTimestamp = -1L;
+    /** 时间戳段左移位数：让出机器段与序列段 */
+    private static final long TIMESTAMP_SHIFT = MACHINE_ID_BITS + SEQUENCE_BITS;
 
-    public SnowflakeIdGenerator() {
-        long machineId = resolveMachineId();
-        this.datacenterId = (machineId >> 5) & 0x1F;
-        this.workerId = machineId & 0x1F;
-        log.info("雪花机器号自动派生: datacenterId={}, workerId={}", datacenterId, workerId);
+    /** 时钟回拨容忍上限（毫秒）：以内等待自愈，超出拒绝生成 */
+    private static final long MAX_BACKWARD_MS = 5L;
+
+    // ==================== 状态 ====================
+
+    private final long machineId;     // 启动时派生，终身不变
+    private long sequence = 0L;       // 当前毫秒内序列
+    private long lastTimestamp = -1L; // 上次发号的毫秒时间戳
+
+    private SnowflakeIdGenerator() {
+        this.machineId = resolveMachineId();
+        log.info("雪花 ID 生成器初始化: machineId={}", machineId);
     }
 
-    public synchronized long nextId() {
-        long timestamp = System.currentTimeMillis();
-        if (timestamp < lastTimestamp) {
-            throw new RuntimeException("时钟回拨");
-        }
+    /**
+     * 生成下一个雪花 ID（全局静态入口）
+     */
+    public static long nextId() {
+        return INSTANCE.generate();
+    }
+
+    // ==================== ID 生成 ====================
+
+    /**
+     * 生成下一个 ID（实例内同步：序列/时间戳 互斥推进）
+     */
+    private synchronized long generate() {
+        long timestamp = currentTime();
+
+        // 同一毫秒：序列自增，溢出则等到下一毫秒；新毫秒：序列归零
         if (timestamp == lastTimestamp) {
             sequence = (sequence + 1) & SEQUENCE_MASK;
             if (sequence == 0) {
@@ -50,57 +81,78 @@ public class SnowflakeIdGenerator {
         } else {
             sequence = 0L;
         }
+
         lastTimestamp = timestamp;
-        return ((timestamp - EPOCH) << (WORKER_ID_BITS + DATACENTER_ID_BITS + SEQUENCE_BITS))
-                | (datacenterId << (WORKER_ID_BITS + SEQUENCE_BITS))
-                | (workerId << SEQUENCE_BITS)
+        return assemble(timestamp, sequence);
+    }
+
+    /** 拼装 64 位 ID：时间戳段 | 机器段 | 序列段 */
+    private long assemble(long timestamp, long sequence) {
+        return ((timestamp - EPOCH) << TIMESTAMP_SHIFT)
+                | (machineId << SEQUENCE_BITS)
                 | sequence;
     }
 
-    /**
-     * 自动派生机器号（10 位）：
-     * 1. 本机非回环 IPv4 的后两段：(第三段 << 8 | 第四段) & 0x3FF
-     * 2. 取不到时回退 hostname 哈希
-     */
-    private static long resolveMachineId() {
-        Long fromIp = machineIdFromIp();
-        if (fromIp != null) {
-            return fromIp;
+    /** 取当前时间；时钟回拨时小步等待自愈，大步拒绝 */
+    private long currentTime() {
+        long timestamp = System.currentTimeMillis();
+        if (timestamp >= lastTimestamp) {
+            return timestamp;
         }
-        return Math.floorMod(localHostName().hashCode(), 1024);
+
+        long backwardMs = lastTimestamp - timestamp;
+        if (backwardMs > MAX_BACKWARD_MS) {
+            throw new IllegalStateException("时钟回拨过大，拒绝生成 ID: " + backwardMs + "ms");
+        }
+        log.warn("检测到时钟回拨 {}ms，等待时钟追上", backwardMs);
+        return tilNextMillis(lastTimestamp);
     }
 
-    private static Long machineIdFromIp() {
-        try {
-            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!ni.isUp() || ni.isLoopback()) {
-                    continue;
-                }
-                for (InetAddress addr : Collections.list(ni.getInetAddresses())) {
-                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
-                        byte[] ip = addr.getAddress();
-                        return ((long) (ip[2] & 0xFF) << 8 | (ip[3] & 0xFF)) & MACHINE_ID_MASK;
-                    }
-                }
-            }
-        } catch (SocketException ignored) {
-        }
-        return null;
-    }
-
-    private static String localHostName() {
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (Exception e) {
-            return "unknown";
-        }
-    }
-
+    /** 自旋等待到下一毫秒 */
     private long tilNextMillis(long lastTimestamp) {
         long timestamp = System.currentTimeMillis();
         while (timestamp <= lastTimestamp) {
             timestamp = System.currentTimeMillis();
         }
         return timestamp;
+    }
+
+    // ==================== 机器号解析 ====================
+
+    private static final String ENV_HOST_IP = "HOST_IP";
+
+    /**
+     * 机器号派生（0..255）：读取部署注入的 HOST_IP，取 IPv4 第四段。
+     * Docker 部署下 HOST_IP 按台注入（宿主内网 IP），单网段内第四段互异即跨机唯一；
+     * 缺失或非法即抛异常（fail-fast，不静默兜底）。
+     */
+    private static long resolveMachineId() {
+        String ip = System.getenv(ENV_HOST_IP);
+        Long machineId = ipSuffix(ip);
+        if (machineId == null) {
+            throw new IllegalStateException("机器号派生失败：HOST_IP 缺失或非法 -> " + ip);
+        }
+        log.info("机器号来源: {}（{}） -> {}", ENV_HOST_IP, ip, machineId);
+        return machineId;
+    }
+
+    /** 机器号 = IPv4 第四段（"…216.102" → 102）：单网段部署下第四段互异即唯一 */
+    private static Long ipSuffix(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return null;
+        }
+        String[] parts = ip.trim().split("\\.");
+        if (parts.length != 4) {
+            return null;
+        }
+        try {
+            int fourth = Integer.parseInt(parts[3]);
+            if (fourth < 0 || fourth > 255) {
+                return null;
+            }
+            return (long) fourth;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }

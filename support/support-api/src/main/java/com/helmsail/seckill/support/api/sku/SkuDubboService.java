@@ -25,12 +25,12 @@ public interface SkuDubboService {
     List<SkuDTO> listBySkuName(String skuName) throws BizException;
 
     /**
-     * 扣减库存
+     * 批量扣减库存（域内单事务：任一项失败整批回滚，零副作用）
      */
-    void deductStock(String skuNo, int quantity) throws BizException;
+    void batchDeductStock(List<StockItem> items) throws BizException;
 
     /**
-     * 增加库存
+     * 批量增加库存（域内单事务：任一项失败整批回滚，零副作用）
      */
-    void addStock(String skuNo, int quantity) throws BizException;
+    void batchAddStock(List<StockItem> items) throws BizException;
 }
