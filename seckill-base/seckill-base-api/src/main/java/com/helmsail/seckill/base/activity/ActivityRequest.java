@@ -36,7 +36,8 @@ public class ActivityRequest implements Serializable {
     @NotNull(message = "结束时间不能为空")
     private LocalTime endTime;
 
-    /** 周位图：bit0=周一…bit6=周日（127=每天）；空则默认每天 */
+    /** 周位图：bit0=周一…bit6=周日（127=每天）；必填，1~127 */
+    @NotNull(message = "周位图不能为空")
     private Integer weekBitmap;
 
     /** 每人限购数量（0=不限购） */

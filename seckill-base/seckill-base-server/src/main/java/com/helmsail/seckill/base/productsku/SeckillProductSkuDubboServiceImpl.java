@@ -128,10 +128,20 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
     }
 
     private void checkActivityStatus(String activityNo, ActivityStatus required, String message) {
-        Activity activity = getActivity(activityNo);
+        Activity activity = getActivityForUpdate(activityNo);
         if (ActivityStatus.byCode(activity.getActivityStatus()) != required) {
             throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR.getCode(), message);
         }
+    }
+
+    /** 锁定读活动行：与活动删除等状态变更串行化（调用方须已在事务内） */
+    private Activity getActivityForUpdate(String activityNo) {
+        Activity activity = activityMapper.selectOne(
+                new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo).last("FOR UPDATE"));
+        if (activity == null) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_FOUND);
+        }
+        return activity;
     }
 
     private void checkActivityNotClosed(String activityNo) {

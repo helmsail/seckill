@@ -16,15 +16,14 @@ public final class WeekBitmap {
     }
 
     /**
-     * 判断位图是否命中指定星期（位图为空视为全选）
+     * 判断位图是否命中指定星期（位图必填且有效，见 isValid；DB 列 NOT NULL）
      */
     public static boolean isActive(Integer weekBitmap, DayOfWeek dayOfWeek) {
-        int bitmap = weekBitmap == null ? ALL : weekBitmap;
-        return ((bitmap >> (dayOfWeek.getValue() - 1)) & 1) == 1;
+        return ((weekBitmap >> (dayOfWeek.getValue() - 1)) & 1) == 1;
     }
 
     /**
-     * 校验位图合法性（1~127）
+     * 校验位图合法性（必填且 1~127）
      */
     public static boolean isValid(Integer weekBitmap) {
         return weekBitmap != null && weekBitmap >= 1 && weekBitmap <= ALL;
