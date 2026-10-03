@@ -52,16 +52,6 @@ public class SkuDubboServiceImpl implements SkuDubboService {
     }
 
     @Override
-    public List<SkuDTO> listBySkuName(String skuName) {
-        if (!StringUtils.hasText(skuName)) {
-            return List.of();
-        }
-        List<Sku> list = skuMapper.selectList(
-                new LambdaQueryWrapper<Sku>().like(Sku::getSkuName, skuName));
-        return list.stream().map(this::toDTO).toList();
-    }
-
-    @Override
     @Transactional
     public void batchDeductStock(List<StockItem> items) {
         for (StockItem item : validateBatch(items)) {
@@ -78,7 +68,12 @@ public class SkuDubboServiceImpl implements SkuDubboService {
     @Transactional
     public void batchAddStock(List<StockItem> items) {
         for (StockItem item : validateBatch(items)) {
-            skuMapper.addStock(item.getSkuNo(), item.getQuantity());
+            int rows = skuMapper.addStock(item.getSkuNo(), item.getQuantity());
+            if (rows == 0) {
+                // 加库存无数量条件：rows=0 单义——行不存在（SKU 被删或编号错误）
+                throw new BizException(SupportResultEnum.SKU_NOT_FOUND.getCode(),
+                        "SKU 不存在或已删除: " + item.getSkuNo());
+            }
         }
     }
 

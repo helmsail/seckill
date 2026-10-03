@@ -20,11 +20,6 @@ public interface SkuDubboService {
     List<SkuDTO> listBySpuNo(String spuNo) throws BizException;
 
     /**
-     * 根据名称模糊查询 SKU
-     */
-    List<SkuDTO> listBySkuName(String skuName) throws BizException;
-
-    /**
      * 批量扣减库存（域内单事务：任一项失败整批回滚，零副作用）
      */
     void batchDeductStock(List<StockItem> items) throws BizException;

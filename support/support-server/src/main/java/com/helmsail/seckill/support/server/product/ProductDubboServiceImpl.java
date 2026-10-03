@@ -11,7 +11,6 @@ import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -38,8 +37,9 @@ public class ProductDubboServiceImpl implements ProductDubboService {
     @Override
     public PageResult<ProductDTO> page(ProductPageQuery query) {
         Page<Product> page = new Page<>(query.getPageNum(), query.getPageSize());
+        // 主键排序：唯一键保证翻页稳定（不重不漏）；雪花主键趋势递增 ≈ 创建时间序
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<Product>()
-                .like(StringUtils.hasText(query.getProductName()), Product::getProductName, query.getProductName());
+                .orderByDesc(Product::getId);
         productMapper.selectPage(page, wrapper);
         List<ProductDTO> list = page.getRecords().stream().map(this::toDTO).toList();
         return new PageResult<>(list, page.getTotal(), page.getCurrent(), page.getSize());
