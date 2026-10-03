@@ -22,10 +22,10 @@ public interface SkuDubboService {
     /**
      * 批量扣减库存（域内单事务：任一项失败整批回滚，零副作用）
      */
-    void batchDeductStock(List<StockItem> items) throws BizException;
+    void batchDeductStock(List<StockChangeItem> items) throws BizException;
 
     /**
      * 批量增加库存（域内单事务：任一项失败整批回滚，零副作用）
      */
-    void batchAddStock(List<StockItem> items) throws BizException;
+    void batchAddStock(List<StockChangeItem> items) throws BizException;
 }

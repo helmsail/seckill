@@ -6,7 +6,7 @@ import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.support.api.result.SupportResultEnum;
 import com.helmsail.seckill.support.api.sku.SkuDTO;
 import com.helmsail.seckill.support.api.sku.SkuDubboService;
-import com.helmsail.seckill.support.api.sku.StockItem;
+import com.helmsail.seckill.support.api.sku.StockChangeItem;
 import lombok.RequiredArgsConstructor;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.stereotype.Service;
@@ -53,8 +53,8 @@ public class SkuDubboServiceImpl implements SkuDubboService {
 
     @Override
     @Transactional
-    public void batchDeductStock(List<StockItem> items) {
-        for (StockItem item : validateBatch(items)) {
+    public void batchDeductStock(List<StockChangeItem> items) {
+        for (StockChangeItem item : validateBatch(items)) {
             int rows = skuMapper.deductStock(item.getSkuNo(), item.getQuantity());
             if (rows == 0) {
                 // rows=0 二义：SKU 不存在或库存不足（原子扣减 WHERE stock >= quantity）
@@ -66,8 +66,8 @@ public class SkuDubboServiceImpl implements SkuDubboService {
 
     @Override
     @Transactional
-    public void batchAddStock(List<StockItem> items) {
-        for (StockItem item : validateBatch(items)) {
+    public void batchAddStock(List<StockChangeItem> items) {
+        for (StockChangeItem item : validateBatch(items)) {
             int rows = skuMapper.addStock(item.getSkuNo(), item.getQuantity());
             if (rows == 0) {
                 // 加库存无数量条件：rows=0 单义——行不存在（SKU 被删或编号错误）
@@ -80,7 +80,7 @@ public class SkuDubboServiceImpl implements SkuDubboService {
     /**
      * 批量入参校验：非空、数量上限、SKU 非空且不重复、数量为正
      */
-    private List<StockItem> validateBatch(List<StockItem> items) {
+    private List<StockChangeItem> validateBatch(List<StockChangeItem> items) {
         if (items == null || items.isEmpty()) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "库存变更列表不能为空");
         }
@@ -88,7 +88,7 @@ public class SkuDubboServiceImpl implements SkuDubboService {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "单批库存变更不能超过 " + MAX_BATCH_SIZE + " 条");
         }
         Set<String> skuNos = new HashSet<>();
-        for (StockItem item : items) {
+        for (StockChangeItem item : items) {
             if (item == null || !StringUtils.hasText(item.getSkuNo()) || item.getQuantity() <= 0) {
                 throw new BizException(ResultEnum.PARAM_ERROR);
             }

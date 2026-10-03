@@ -1,16 +1,16 @@
 package com.helmsail.seckill.admin.controller;
 
-import com.helmsail.seckill.base.productsku.AddProductSkuRequest;
-import com.helmsail.seckill.base.productsku.RemoveProductSkuRequest;
+import com.helmsail.seckill.base.productsku.AddSeckillProductSkuRequest;
+import com.helmsail.seckill.base.productsku.RemoveSeckillProductSkuRequest;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
-import com.helmsail.seckill.base.productsku.ShelfProductSkuRequest;
+import com.helmsail.seckill.base.productsku.ShelfSeckillProductSkuRequest;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.Result;
 import com.helmsail.seckill.common.result.ResultEnum;
 import com.helmsail.seckill.support.api.sku.SkuDubboService;
-import com.helmsail.seckill.support.api.sku.StockItem;
+import com.helmsail.seckill.support.api.sku.StockChangeItem;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,8 +67,8 @@ public class ProductSkuController {
      * 落库确认失败 → 整批补偿归还；任一阶段未知结果 → 不动作、转人工。
      */
     @PostMapping
-    public Result<Void> batchAdd(@Valid @RequestBody AddProductSkuRequest request) {
-        List<StockItem> stockItems = toStockItemsForDeduct(request.getItems());
+    public Result<Void> batchAdd(@Valid @RequestBody AddSeckillProductSkuRequest request) {
+        List<StockChangeItem> stockItems = toStockItemsForDeduct(request.getItems());
 
         // 阶段一：批量划拨（support 域内单事务：整批扣 / 零扣）
         try {
@@ -113,18 +113,18 @@ public class ProductSkuController {
      * 已删则按预读快照继续归还，否则转人工。
      */
     @DeleteMapping
-    public Result<Void> batchRemove(@Valid @RequestBody RemoveProductSkuRequest request) {
+    public Result<Void> batchRemove(@Valid @RequestBody RemoveSeckillProductSkuRequest request) {
         String activityNo = request.getActivityNo();
         List<String> skuNos = request.getSkuNos();
 
         // 预读：删除成功后行即消失、配额不可再查，预读快照是超时后恢复归还的唯一依据
-        List<StockItem> preReadItems = preReadQuota(activityNo, skuNos);
+        List<StockChangeItem> preReadItems = preReadQuota(activityNo, skuNos);
 
         // 阶段一：秒杀域批量删除（base 域内单事务：整批删 / 零删）
-        List<StockItem> restoreItems;
+        List<StockChangeItem> restoreItems;
         try {
             restoreItems = seckillProductSkuService.batchRemove(request).stream()
-                    .map(item -> new StockItem(item.getSkuNo(), item.getStockToRestore()))
+                    .map(item -> new StockChangeItem(item.getSkuNo(), item.getStockToRestore()))
                     .toList();
         } catch (Exception e) {
             BizException biz = findBizException(e);
@@ -153,7 +153,7 @@ public class ProductSkuController {
      * 批量上架/下架（活动非终态可用）
      */
     @PutMapping("/shelf")
-    public Result<Void> batchShelf(@Valid @RequestBody ShelfProductSkuRequest request) {
+    public Result<Void> batchShelf(@Valid @RequestBody ShelfSeckillProductSkuRequest request) {
         seckillProductSkuService.batchShelf(request);
         return Result.success();
     }
@@ -171,19 +171,19 @@ public class ProductSkuController {
     /**
      * 添加请求 → 划拨清单（快速失败：空列表 / 缺 SKU 编号 / 库存非正，先于任何副作用）
      */
-    private static List<StockItem> toStockItemsForDeduct(List<AddProductSkuRequest.Item> items) {
+    private static List<StockChangeItem> toStockItemsForDeduct(List<AddSeckillProductSkuRequest.SkuConfig> items) {
         if (items == null || items.isEmpty()) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "添加列表不能为空");
         }
-        List<StockItem> stockItems = new ArrayList<>(items.size());
-        for (AddProductSkuRequest.Item item : items) {
+        List<StockChangeItem> stockItems = new ArrayList<>(items.size());
+        for (AddSeckillProductSkuRequest.SkuConfig item : items) {
             if (item == null || !StringUtils.hasText(item.getSkuNo())) {
                 throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "SKU 编号不能为空");
             }
             if (item.getActivityStock() == null || item.getActivityStock() <= 0) {
                 throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "活动库存必须大于 0: " + item.getSkuNo());
             }
-            stockItems.add(new StockItem(item.getSkuNo(), item.getActivityStock()));
+            stockItems.add(new StockChangeItem(item.getSkuNo(), item.getActivityStock()));
         }
         return stockItems;
     }
@@ -191,7 +191,7 @@ public class ProductSkuController {
     /**
      * 预读待删 SKU 的配额快照；任一 SKU 不在活动中立即失败（与秒杀域删除的校验语义一致，零副作用）
      */
-    private List<StockItem> preReadQuota(String activityNo, List<String> skuNos) {
+    private List<StockChangeItem> preReadQuota(String activityNo, List<String> skuNos) {
         if (skuNos == null || skuNos.isEmpty()) {
             throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "删除列表不能为空");
         }
@@ -208,13 +208,13 @@ public class ProductSkuController {
         }
         Map<String, Integer> quotaMap = rows.stream().collect(Collectors.toMap(
                 SeckillProductSkuDTO::getSkuNo, SeckillProductSkuDTO::getActivityStock, (a, b) -> a));
-        List<StockItem> items = new ArrayList<>(skuNos.size());
+        List<StockChangeItem> items = new ArrayList<>(skuNos.size());
         for (String skuNo : skuNos) {
             Integer quota = quotaMap.get(skuNo);
             if (quota == null) {
                 throw new BizException(SeckillResultEnum.SKU_NOT_FOUND.getCode(), "SKU 不在活动中: " + skuNo);
             }
-            items.add(new StockItem(skuNo, quota));
+            items.add(new StockChangeItem(skuNo, quota));
         }
         return items;
     }
@@ -223,7 +223,7 @@ public class ProductSkuController {
      * 删除超时查证：重读活动 SKU 列表判定删除是否已生效。
      * 全部消失 = 已删除（返回预读快照清单）；仍有残留 / 读取失败 = null（转人工）
      */
-    private List<StockItem> verifyRemoved(String activityNo, List<String> skuNos, List<StockItem> preReadItems) {
+    private List<StockChangeItem> verifyRemoved(String activityNo, List<String> skuNos, List<StockChangeItem> preReadItems) {
         List<SeckillProductSkuDTO> rows;
         try {
             rows = seckillProductSkuService.listByActivityNo(activityNo);
@@ -247,7 +247,7 @@ public class ProductSkuController {
      * 批量归还主域库存（support 域内单事务：整批还 / 零还）。
      * 确认失败可安全重试（事务回滚=零副作用）；超时（未知结果）不重试，记日志转人工。
      */
-    private void restoreStock(String activityNo, List<StockItem> items, String scene) {
+    private void restoreStock(String activityNo, List<StockChangeItem> items, String scene) {
         for (int attempt = 1; attempt <= RESTORE_MAX_ATTEMPTS; attempt++) {
             try {
                 skuService.batchAddStock(items);
@@ -277,7 +277,7 @@ public class ProductSkuController {
     /**
      * 日志用条目描述
      */
-    private static String describe(List<StockItem> items) {
+    private static String describe(List<StockChangeItem> items) {
         if (items == null || items.isEmpty()) {
             return "[]";
         }

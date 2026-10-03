@@ -12,7 +12,7 @@ import java.util.List;
  * 主域库存划拨由调用方先行完成；本服务失败时调用方负责补偿归还。
  */
 @Data
-public class AddProductSkuRequest implements Serializable {
+public class AddSeckillProductSkuRequest implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -20,10 +20,10 @@ public class AddProductSkuRequest implements Serializable {
     private String activityNo;
 
     /** 待添加的 SKU 配置列表 */
-    private List<Item> items;
+    private List<SkuConfig> items;
 
     @Data
-    public static class Item implements Serializable {
+    public static class SkuConfig implements Serializable {
 
         private static final long serialVersionUID = 1L;
 

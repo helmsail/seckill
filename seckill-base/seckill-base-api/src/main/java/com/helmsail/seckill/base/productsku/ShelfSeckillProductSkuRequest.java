@@ -6,16 +6,19 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 批量删除活动商品SKU请求（仅待开始状态可用，物理删除）
+ * 批量上架/下架请求（活动非终态可用）
  */
 @Data
-public class RemoveProductSkuRequest implements Serializable {
+public class ShelfSeckillProductSkuRequest implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     /** 活动编号 */
     private String activityNo;
 
-    /** 待删除的 SKU 编号列表 */
+    /** 待操作的 SKU 编号列表 */
     private List<String> skuNos;
+
+    /** true=上架，false=下架 */
+    private boolean onShelf;
 }

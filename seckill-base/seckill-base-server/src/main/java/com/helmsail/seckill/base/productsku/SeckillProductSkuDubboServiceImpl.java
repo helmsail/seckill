@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.helmsail.seckill.base.activity.Activity;
 import com.helmsail.seckill.base.activity.ActivityMapper;
 import com.helmsail.seckill.base.activity.ActivityStatus;
+import com.helmsail.seckill.base.productsku.AddSeckillProductSkuRequest.SkuConfig;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.ResultEnum;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -38,76 +38,75 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
     private final SeckillProductSkuMapper seckillProductSkuMapper;
     private final ActivityMapper activityMapper;
 
+    // ========== 写操作 ==========
+
     @Override
     @Transactional
-    public void batchAdd(AddProductSkuRequest request) {
-        checkActivityStatus(request.getActivityNo(), ActivityStatus.PENDING, "仅待开始状态可添加商品");
-        List<AddProductSkuRequest.Item> items = request.getItems();
-        if (items == null || items.isEmpty()) {
-            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "添加列表不能为空");
-        }
-        Set<String> skuNos = new HashSet<>();
-        for (AddProductSkuRequest.Item item : items) {
+    public void batchAdd(AddSeckillProductSkuRequest request) {
+        String activityNo = request.getActivityNo();
+        checkActivityStatus(activityNo, ActivityStatus.PENDING, "仅待开始状态可添加商品");
+        List<SkuConfig> items = requireNonEmpty(request.getItems(), "添加列表不能为空");
+        checkNoDuplicateSkuNos(items.stream().map(SkuConfig::getSkuNo).toList(), "添加列表存在重复 SKU");
+        for (SkuConfig item : items) {
             validateItem(item);
-            if (!skuNos.add(item.getSkuNo())) {
-                throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "添加列表存在重复 SKU: " + item.getSkuNo());
-            }
-            Long exists = seckillProductSkuMapper.selectCount(new LambdaQueryWrapper<SeckillProductSku>()
-                    .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
-                    .eq(SeckillProductSku::getSkuNo, item.getSkuNo()));
-            if (exists != null && exists > 0) {
-                throw new BizException(SeckillResultEnum.SKU_ALREADY_EXISTS.getCode(), "SKU 已在活动中: " + item.getSkuNo());
-            }
-            seckillProductSkuMapper.insert(toEntity(request.getActivityNo(), item));
+            checkNotInActivity(activityNo, item.getSkuNo());
+            seckillProductSkuMapper.insert(toEntity(activityNo, item));
         }
     }
 
     @Override
     @Transactional
-    public List<StockRestoreItem> batchRemove(RemoveProductSkuRequest request) {
-        checkActivityStatus(request.getActivityNo(), ActivityStatus.PENDING, "仅待开始状态可删除商品");
-        List<String> skuNos = request.getSkuNos();
-        if (skuNos == null || skuNos.isEmpty()) {
-            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "删除列表不能为空");
-        }
+    public List<StockRestoreItem> batchRemove(RemoveSeckillProductSkuRequest request) {
+        String activityNo = request.getActivityNo();
+        checkActivityStatus(activityNo, ActivityStatus.PENDING, "仅待开始状态可删除商品");
+        List<String> skuNos = requireNonEmpty(request.getSkuNos(), "删除列表不能为空");
+        checkNoDuplicateSkuNos(skuNos, "删除列表存在重复 SKU");
         List<SeckillProductSku> rows = seckillProductSkuMapper.selectList(new LambdaQueryWrapper<SeckillProductSku>()
-                .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
+                .eq(SeckillProductSku::getActivityNo, activityNo)
                 .in(SeckillProductSku::getSkuNo, skuNos));
-        if (rows.size() != new HashSet<>(skuNos).size()) {
+        if (rows.size() != skuNos.size()) {
             throw new BizException(SeckillResultEnum.SKU_NOT_FOUND);
         }
-        List<StockRestoreItem> restoreItems = new ArrayList<>();
-        for (SeckillProductSku row : rows) {
-            restoreItems.add(new StockRestoreItem(row.getSkuNo(), row.getActivityStock()));
-        }
-        seckillProductSkuMapper.delete(new LambdaQueryWrapper<SeckillProductSku>()
-                .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
+        int deleted = seckillProductSkuMapper.delete(new LambdaQueryWrapper<SeckillProductSku>()
+                .eq(SeckillProductSku::getActivityNo, activityNo)
                 .in(SeckillProductSku::getSkuNo, skuNos));
-        return restoreItems;
+        if (deleted != rows.size()) {
+            // 并发中行已消失：整批回滚，避免返回已失效的归还清单
+            throw new BizException(SeckillResultEnum.SKU_NOT_FOUND.getCode(), "部分 SKU 已不存在，请刷新后重试");
+        }
+        // 归还清单：数量以库内快照为准（调用方据此编排归还主域）
+        return rows.stream()
+                .map(row -> new StockRestoreItem(row.getSkuNo(), row.getActivityStock()))
+                .toList();
     }
 
     @Override
-    public void batchShelf(ShelfProductSkuRequest request) {
-        checkActivityNotClosed(request.getActivityNo());
-        List<String> skuNos = request.getSkuNos();
-        if (skuNos == null || skuNos.isEmpty()) {
-            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "操作列表不能为空");
-        }
-        Set<String> distinctSkuNos = new HashSet<>(skuNos);
+    @Transactional
+    public void batchShelf(ShelfSeckillProductSkuRequest request) {
+        String activityNo = request.getActivityNo();
+        checkActivityNotClosed(activityNo);
+        List<String> skuNos = requireNonEmpty(request.getSkuNos(), "操作列表不能为空");
+        checkNoDuplicateSkuNos(skuNos, "操作列表存在重复 SKU");
         List<SeckillProductSku> existing = seckillProductSkuMapper.selectList(new LambdaQueryWrapper<SeckillProductSku>()
-                .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
-                .in(SeckillProductSku::getSkuNo, distinctSkuNos));
+                .eq(SeckillProductSku::getActivityNo, activityNo)
+                .in(SeckillProductSku::getSkuNo, skuNos));
         Set<String> existingSkuNos = existing.stream().map(SeckillProductSku::getSkuNo).collect(Collectors.toSet());
-        for (String skuNo : distinctSkuNos) {
+        for (String skuNo : skuNos) {
             if (!existingSkuNos.contains(skuNo)) {
                 throw new BizException(SeckillResultEnum.SKU_NOT_FOUND.getCode(), "SKU 不存在: " + skuNo);
             }
         }
-        seckillProductSkuMapper.update(null, new LambdaUpdateWrapper<SeckillProductSku>()
-                .eq(SeckillProductSku::getActivityNo, request.getActivityNo())
-                .in(SeckillProductSku::getSkuNo, distinctSkuNos)
+        int updated = seckillProductSkuMapper.update(null, new LambdaUpdateWrapper<SeckillProductSku>()
+                .eq(SeckillProductSku::getActivityNo, activityNo)
+                .in(SeckillProductSku::getSkuNo, skuNos)
                 .set(SeckillProductSku::getShelfStatus, request.isOnShelf() ? SHELF_ON : SHELF_OFF));
+        if (updated != skuNos.size()) {
+            // 并发中行已消失：整批回滚（UPDATE 返回匹配行数，重复设置同值不会误报）
+            throw new BizException(SeckillResultEnum.SKU_NOT_FOUND.getCode(), "部分 SKU 已不存在，请刷新后重试");
+        }
     }
+
+    // ========== 查询 ==========
 
     @Override
     public List<SeckillProductSkuDTO> listByActivityNo(String activityNo) {
@@ -127,6 +126,8 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
         return row == null ? null : toDTO(row);
     }
 
+    // ========== 辅助方法 ==========
+
     private void checkActivityStatus(String activityNo, ActivityStatus required, String message) {
         Activity activity = getActivityForUpdate(activityNo);
         if (ActivityStatus.byCode(activity.getActivityStatus()) != required) {
@@ -134,7 +135,9 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
         }
     }
 
-    /** 锁定读活动行：与活动删除等状态变更串行化（调用方须已在事务内） */
+    /**
+     * 锁定读活动行：与活动删除等状态变更串行化（调用方须已在事务内）
+     */
     private Activity getActivityForUpdate(String activityNo) {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo).last("FOR UPDATE"));
@@ -151,6 +154,9 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
         }
     }
 
+    /**
+     * 查询活动（不存在抛异常）
+     */
     private Activity getActivity(String activityNo) {
         Activity activity = activityMapper.selectOne(
                 new LambdaQueryWrapper<Activity>().eq(Activity::getActivityNo, activityNo));
@@ -160,7 +166,41 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
         return activity;
     }
 
-    private void validateItem(AddProductSkuRequest.Item item) {
+    /**
+     * 批量列表非空断言
+     */
+    private static <T> List<T> requireNonEmpty(List<T> list, String message) {
+        if (list == null || list.isEmpty()) {
+            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), message);
+        }
+        return list;
+    }
+
+    /**
+     * 批内去重：重复 SKU 编号直接拒绝
+     */
+    private static void checkNoDuplicateSkuNos(List<String> skuNos, String message) {
+        Set<String> seen = new HashSet<>();
+        for (String skuNo : skuNos) {
+            if (!seen.add(skuNo)) {
+                throw new BizException(ResultEnum.PARAM_ERROR.getCode(), message + ": " + skuNo);
+            }
+        }
+    }
+
+    /**
+     * 查重：SKU 已在活动中则拒绝
+     */
+    private void checkNotInActivity(String activityNo, String skuNo) {
+        Long exists = seckillProductSkuMapper.selectCount(new LambdaQueryWrapper<SeckillProductSku>()
+                .eq(SeckillProductSku::getActivityNo, activityNo)
+                .eq(SeckillProductSku::getSkuNo, skuNo));
+        if (exists != null && exists > 0) {
+            throw new BizException(SeckillResultEnum.SKU_ALREADY_EXISTS.getCode(), "SKU 已在活动中: " + skuNo);
+        }
+    }
+
+    private void validateItem(SkuConfig item) {
         if (item.getSpuNo() == null || item.getSpuName() == null
                 || item.getSkuNo() == null || item.getSkuName() == null
                 || item.getOriginalPrice() == null || item.getDiscountType() == null
@@ -182,7 +222,18 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
         }
     }
 
-    private SeckillProductSku toEntity(String activityNo, AddProductSkuRequest.Item item) {
+    private BigDecimal calculateSeckillPrice(SkuConfig item) {
+        DiscountType type = item.getDiscountType();
+        BigDecimal originalPrice = item.getOriginalPrice();
+        BigDecimal parameter = item.getDiscountParameter();
+        return switch (type) {
+            case FIXED_PRICE -> parameter;
+            case DISCOUNT -> originalPrice.multiply(parameter);
+            case FIXED_REDUCTION -> originalPrice.subtract(parameter);
+        };
+    }
+
+    private SeckillProductSku toEntity(String activityNo, SkuConfig item) {
         SeckillProductSku row = new SeckillProductSku();
         row.setActivityNo(activityNo);
         row.setSpuNo(item.getSpuNo());
@@ -197,17 +248,6 @@ public class SeckillProductSkuDubboServiceImpl implements SeckillProductSkuDubbo
         row.setPurchaseLimit(item.getPurchaseLimit() == null ? 0 : item.getPurchaseLimit());
         row.setShelfStatus(SHELF_ON);
         return row;
-    }
-
-    private BigDecimal calculateSeckillPrice(AddProductSkuRequest.Item item) {
-        DiscountType type = item.getDiscountType();
-        BigDecimal originalPrice = item.getOriginalPrice();
-        BigDecimal parameter = item.getDiscountParameter();
-        return switch (type) {
-            case FIXED_PRICE -> parameter;
-            case DISCOUNT -> originalPrice.multiply(parameter);
-            case FIXED_REDUCTION -> originalPrice.subtract(parameter);
-        };
     }
 
     private SeckillProductSkuDTO toDTO(SeckillProductSku row) {
