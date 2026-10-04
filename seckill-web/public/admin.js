@@ -1,7 +1,7 @@
 /** 运营端：登录 / 活动管理（增删改查/暂停恢复关闭）/ 选品 / 上下架 */
 
 let currentNo = '';        // 当前查看详情的活动编号
-let currentDetail = null;  // { activity, products: [{ product, skus }] }
+let currentDetail = null;  // { activity, skus: [平铺列表] }（SPU 分组在前端完成）
 const activityMap = {};    // activityNo -> ActivityDTO（列表缓存，供编辑表单取原值）
 
 /* ---------- 视图与登录态 ---------- */
@@ -205,13 +205,22 @@ function renderDetail() {
   $('#detailTools').innerHTML = [
     canEdit ? '<button class="btn btn-sm btn-primary" id="btnAddProduct">+ 添加商品</button>' : '',
     canEdit ? '<button class="btn btn-sm btn-danger" id="btnRemoveSkus">删除所选</button>' : '',
-    st !== 'CLOSED' && currentDetail.products.length
+    st !== 'CLOSED' && currentDetail.skus.length
       ? '<button class="btn btn-sm" id="btnOnShelf">批量上架</button><button class="btn btn-sm" id="btnOffShelf">批量下架</button>' : '',
   ].filter(Boolean).join(' ');
 
-  const body = currentDetail.products.map(({ product, skus }) => `
+  // 按 spuNo 分组（Map 保持插入序，与后端 id 升序一致）
+  const grouped = new Map();
+  currentDetail.skus.forEach((s) => {
+    if (!grouped.has(s.spuNo)) grouped.set(s.spuNo, []);
+    grouped.get(s.spuNo).push(s);
+  });
+
+  const body = [...grouped.values()].map((skus) => {
+    const first = skus[0];
+    return `
     <tr><td colspan="7" class="spu-cell" style="background: #fafbfc">
-      ${esc(product.spuName)} <span class="muted">${esc(product.spuNo)} · ${esc(discountText(product.discountType, product.discountParameter))}</span>
+      ${esc(first.spuName)} <span class="muted">${esc(first.spuNo)} · ${esc(discountText(first.discountType, first.discountParameter))}</span>
     </td></tr>
     ${skus.map((s) => `
       <tr>
@@ -222,7 +231,8 @@ function renderDetail() {
         <td>${s.activityStock ?? '-'}</td>
         <td>${s.purchaseLimit ?? 0}</td>
         <td><span class="badge badge-${s.shelfStatus === 1 ? 'onshelf' : 'offshelf'}">${s.shelfStatus === 1 ? '在售' : '下架'}</span></td>
-      </tr>`).join('')}`).join('');
+      </tr>`).join('')}`;
+  }).join('');
 
   $('#skuTable').innerHTML = `
     <thead><tr>
@@ -250,7 +260,7 @@ async function removeSelected() {
   if (!skuNos.length) return toast('请先勾选 SKU', false);
   if (!confirm('确认从活动中删除所选 SKU？（活动库存将归还主域）')) return;
   try {
-    await apiDel('/api/admin/product-sku', { activityNo: currentNo, skuNos });
+    await apiPost('/api/admin/product-sku/remove', { activityNo: currentNo, skuNos });
     toast('已删除');
     await openDetail(currentNo);
   } catch (err) {

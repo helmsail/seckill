@@ -6,11 +6,12 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 活动详情 VO（层次化输出：活动 → SPU 分组 → SKU 行）
+ * 活动详情 VO（活动 + 秒杀域 SKU 平铺列表）
+ *
+ * SPU 分组塑形（分组标题行 + 组级折扣信息）由前端完成，本 VO 只做简单拼装。
  */
 @Data
 @AllArgsConstructor
@@ -21,32 +22,6 @@ public class ActivityDetailVO implements Serializable {
     /** 活动信息 */
     private ActivityDTO activity;
 
-    /** 商品及 SKU 列表 */
-    private List<ProductWithSkus> products;
-
-    @Data
-    @AllArgsConstructor
-    public static class ProductWithSkus implements Serializable {
-
-        private static final long serialVersionUID = 1L;
-
-        /** 商品信息 */
-        private ProductInfo product;
-
-        /** SKU 列表 */
-        private List<SeckillProductSkuDTO> skus;
-    }
-
-    @Data
-    @AllArgsConstructor
-    public static class ProductInfo implements Serializable {
-
-        private static final long serialVersionUID = 1L;
-
-        private String activityNo;
-        private String spuNo;
-        private String spuName;
-        private String discountType;
-        private BigDecimal discountParameter;
-    }
+    /** 商品 SKU 平铺列表（按 id 升序，与展示顺序一致） */
+    private List<SeckillProductSkuDTO> skus;
 }

@@ -20,8 +20,9 @@ import java.util.List;
  * 活动服务实现（Dubbo 暴露）
  *
  * 状态规则全部收敛在此：语义化操作 + 矩阵断言 + 条件更新（防并发）。
- * 本服务含非幂等写操作（创建/删除/状态流转），消费方须禁用自动重试
- * （Dubbo 重试由 Consumer 决定，Provider 侧 retries 不生效）。
+ * 写操作两类：create 非幂等（消费方须禁重试 retries=0）；删除/更新/状态流转
+ * 有效果幂等或 CAS 保护（重复到达不坏数据），允许重试，消费方须按"报错≠未执行"处理。
+ * （Dubbo 重试由 Consumer 决定，Provider 侧 retries 不生效）
  */
 @Service
 @DubboService

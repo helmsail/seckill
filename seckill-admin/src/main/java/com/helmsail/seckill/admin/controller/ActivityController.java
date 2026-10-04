@@ -11,11 +11,7 @@ import org.apache.dubbo.config.annotation.DubboReference;
 import org.apache.dubbo.config.annotation.Method;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 活动管理 Controller
@@ -25,15 +21,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ActivityController {
 
-    /** 读写混合：写方法方法级禁重试；读方法不声明，自动走引用级默认 */
-    @DubboReference(methods = {
-            @Method(name = "create", retries = 0),
-            @Method(name = "delete", retries = 0),
-            @Method(name = "update", retries = 0),
-            @Method(name = "pause", retries = 0),
-            @Method(name = "resume", retries = 0),
-            @Method(name = "close", retries = 0)
-    })
+    /** 仅 create 禁重试（不幂等：重试 = 重复创建）；其余方法效果幂等/CAS 安全，允许默认重试 */
+    @DubboReference(methods = @Method(name = "create", retries = 0))
     private ActivityDubboService activityService;
 
     @DubboReference
@@ -74,26 +63,13 @@ public class ActivityController {
     }
 
     /**
-     * 查询活动详情（活动 + 按 SPU 分组的商品SKU，编排在本层）
+     * 查询活动详情（活动 + 秒杀域 SKU 平铺列表；SPU 分组塑形由前端完成）
      */
     @GetMapping("/{activityNo}/detail")
     public Result<ActivityDetailVO> detail(@PathVariable String activityNo) {
         ActivityDTO activity = activityService.getByActivityNo(activityNo);
-        List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
-
-        Map<String, List<SeckillProductSkuDTO>> grouped = rows.stream()
-                .collect(Collectors.groupingBy(SeckillProductSkuDTO::getSpuNo,
-                        LinkedHashMap::new, Collectors.toList()));
-
-        List<ActivityDetailVO.ProductWithSkus> productWithSkusList = new ArrayList<>();
-        for (Map.Entry<String, List<SeckillProductSkuDTO>> entry : grouped.entrySet()) {
-            SeckillProductSkuDTO first = entry.getValue().get(0);
-            ActivityDetailVO.ProductInfo productInfo = new ActivityDetailVO.ProductInfo(
-                    activityNo, first.getSpuNo(), first.getSpuName(),
-                    first.getDiscountType().name(), first.getDiscountParameter());
-            productWithSkusList.add(new ActivityDetailVO.ProductWithSkus(productInfo, entry.getValue()));
-        }
-        return Result.success(new ActivityDetailVO(activity, productWithSkusList));
+        List<SeckillProductSkuDTO> skus = seckillProductSkuService.listByActivityNo(activityNo);
+        return Result.success(new ActivityDetailVO(activity, skus));
     }
 
     /**
