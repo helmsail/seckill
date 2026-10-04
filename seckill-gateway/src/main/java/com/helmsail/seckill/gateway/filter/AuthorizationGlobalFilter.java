@@ -19,7 +19,7 @@ import reactor.core.publisher.Mono;
 /**
  * 授权过滤器
  *
- * 按路径校验角色：/api/admin/** 要求运营角色（role=1）。
+ * 按路径校验角色：/api/admin/** 要求管理员角色（role=1）。
  * 认证上下文由 AuthenticationGlobalFilter 写入；白名单路径直接放行，
  * 角色缺失（如旧版令牌）按安全默认拒绝。
  */
@@ -36,7 +36,7 @@ public class AuthorizationGlobalFilter implements GlobalFilter, Ordered {
 
         if (GatewayAuth.isAdminPath(path) && !GatewayAuth.isWhiteListed(path)) {
             Role role = exchange.getAttribute(GatewayAuth.ATTR_ROLE);
-            if (GatewayAuth.ADMIN_ROLE != role) {
+            if (Role.ADMIN != role) {
                 log.warn("无权限访问: path={}, role={}", path, role);
                 return GatewayResponseWriter.write(exchange, objectMapper, HttpStatus.FORBIDDEN,
                         Result.of(GatewayError.FORBIDDEN.getCode(), "无权限访问"));

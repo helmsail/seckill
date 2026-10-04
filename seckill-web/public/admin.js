@@ -37,7 +37,7 @@ $('#formLogin').onsubmit = async (e) => {
       username: $('#loginUser').value.trim(),
       password: $('#loginPass').value,
     });
-    if (data.user.role !== 1) throw new Error('该账号非运营账号，无权进入管理端');
+    if (data.user.role !== 1) throw new Error('该账号非管理员账号，无权进入管理端');
     auth.save(data.token, data.user);
     await showMain();
   } catch (err) {

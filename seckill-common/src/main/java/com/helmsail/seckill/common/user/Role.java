@@ -13,7 +13,7 @@ import lombok.Getter;
 public enum Role {
 
     CONSUMER(0, "C端用户"),
-    OPERATOR(1, "运营人员");
+    ADMIN(1, "管理员");
 
     private final int code;
     private final String desc;

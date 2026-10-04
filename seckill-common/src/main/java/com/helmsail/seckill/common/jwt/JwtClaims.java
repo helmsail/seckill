@@ -15,6 +15,6 @@ public final class JwtClaims {
     /** 用户名 */
     public static final String USERNAME = "username";
 
-    /** 角色（0=C端用户，1=运营人员） */
+    /** 角色（0=C端用户，1=管理员） */
     public static final String ROLE = "role";
 }

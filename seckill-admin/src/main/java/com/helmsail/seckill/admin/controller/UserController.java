@@ -24,14 +24,14 @@ public class UserController {
     private UserDubboService userService;
 
     /**
-     * 登录（管理端入口：仅运营人员可登录）
+     * 登录（管理端入口：仅管理员可登录）
      */
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = userService.login(request);
         Integer roleCode = response.getUser() == null ? null : response.getUser().getRole();
-        if (Role.fromCode(roleCode) != Role.OPERATOR) {
-            throw new BizException(ResultEnum.FORBIDDEN.getCode(), "仅运营人员可登录管理后台");
+        if (Role.fromCode(roleCode) != Role.ADMIN) {
+            throw new BizException(ResultEnum.FORBIDDEN.getCode(), "仅管理员可登录管理后台");
         }
         return Result.success(response);
     }

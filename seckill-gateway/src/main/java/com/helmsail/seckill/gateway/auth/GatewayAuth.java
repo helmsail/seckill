@@ -1,6 +1,5 @@
 package com.helmsail.seckill.gateway.auth;
 
-import com.helmsail.seckill.common.user.Role;
 import org.springframework.util.AntPathMatcher;
 
 import java.util.List;
@@ -16,9 +15,6 @@ public final class GatewayAuth {
 
     /** exchange 属性键：认证过滤器写入的角色，供授权过滤器读取 */
     public static final String ATTR_ROLE = "gateway.auth.role";
-
-    /** 管理端所需角色（与 t_user.role 对齐，见 common 的 Role 枚举） */
-    public static final Role ADMIN_ROLE = Role.OPERATOR;
 
     /** 管理端路径前缀 */
     public static final String ADMIN_PATH = "/api/admin/**";
