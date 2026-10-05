@@ -1,5 +1,6 @@
 package com.helmsail.seckill.service.seckill;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityStatus;
 import com.helmsail.seckill.base.activity.WeekBitmap;
@@ -7,7 +8,6 @@ import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
-import com.helmsail.seckill.service.activity.ActivityQueryService;
 import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  *
  * 限流 / 活动（抢跑拉黑 + 生效窗口）/ 黑名单 / 限购 / 在售 / 库存——“请求能否进入秒杀”的全部前置判定集中于此，
  * 按“用户 → 活动 → 商品 → 资源”顺序逐层收缩，方法序与 SeckillService 的调用顺序一致，逐项失败即抛对应业务码。
- * 所有检查均读取缓存快照做前置过滤，正确性以 processor 的 DB 权威终判为准。
+ * 所有检查均直读 Redis（快照 / 键）做前置过滤，正确性以 processor 的 DB 权威终判为准。
  */
 @Slf4j
 @Service
@@ -37,7 +37,7 @@ public class CheckService {
     private final RedisService redisService;
     private final RedissonClient redissonClient;
     private final SeckillConfig config;
-    private final ActivityQueryService activityQueryService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 限流检查（用户级令牌桶，全实例共享同一配额）
@@ -70,7 +70,8 @@ public class CheckService {
      * 运行期是否已结束由 processor 的 DB 状态终判兜底。
      */
     public void checkActivity(String activityNo, String userId) {
-        ActivityDTO activity = activityQueryService.getActivityByNo(activityNo);
+        // 直读 Redis hash（校验不走查询侧缓存；miss / 坏数据按不可用拒绝）
+        ActivityDTO activity = readActivity(activityNo);
         if (activity == null) {
             throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
         }
@@ -118,12 +119,14 @@ public class CheckService {
     /**
      * 限购检查（Redis 计数只读否决）
      *
+     * 限购上限与已购计数均直读 Redis 独立键（校验数据不吃展示缓存窗口）；
      * 已达限购直接拒绝；计数含在途延迟（排队中的消息尚未扣减），并发下可能漏放，
      * 真实扣减以 processor 的 Lua 原子判定为准。
      */
     public void checkPurchaseLimit(String activityNo, String skuNo, String userId, int quantity) {
-        Integer purchaseLimit = activityQueryService.getSkuPurchaseLimit(activityNo, skuNo);
-        if (purchaseLimit == null || purchaseLimit <= 0) {
+        String quota = redisService.get(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, skuNo));
+        int purchaseLimit = quota == null ? 0 : Integer.parseInt(quota);
+        if (purchaseLimit <= 0) {
             return;
         }
         String used = redisService.get(String.format(SeckillRedisKey.KEY_PURCHASE_LIMIT, activityNo, skuNo, userId));
@@ -146,14 +149,31 @@ public class CheckService {
     }
 
     /**
-     * 库存检查（Redis 快照只读否决）
+     * 库存检查（Redis 键只读否决，直读不经缓存）
      *
      * 真实扣减以 processor 的 Lua 原子扣减为准。
      */
     public void checkStock(String activityNo, String skuNo, int quantity) {
-        Integer stock = activityQueryService.getSkuStock(activityNo, skuNo);
-        if (stock == null || stock < quantity) {
+        String stock = redisService.get(String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, skuNo));
+        int current = stock == null ? 0 : Integer.parseInt(stock);
+        if (current < quantity) {
             throw new BizException(SeckillResultEnum.STOCK_INSUFFICIENT);
+        }
+    }
+
+    /**
+     * 直读活动信息（Redis hash：field=activityNo）：读不到 / 解析失败均返回 null（按不可用处理）
+     */
+    private ActivityDTO readActivity(String activityNo) {
+        String json = redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo);
+        if (json == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, ActivityDTO.class);
+        } catch (Exception e) {
+            log.error("活动信息解析失败: activityNo={}", activityNo, e);
+            return null;
         }
     }
 }

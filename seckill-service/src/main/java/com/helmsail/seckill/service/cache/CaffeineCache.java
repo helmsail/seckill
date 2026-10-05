@@ -1,75 +1,55 @@
 package com.helmsail.seckill.service.cache;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
-import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
- * Caffeine 缓存实例
+ * 本地缓存骨架（Caffeine 封装：只做缓存管理，不做加载链组合）
  *
- * 借用 Caffeine 原生过期机制：
- * - expireAfterWrite（硬过期）→ load() → Redis + 回源
- * - refreshAfterWrite（软过期）→ reload() → 仅 Redis
+ * - expireAfterWrite（硬过期）→ load → 调用方传入的 loader（全链：快照源 → 回源兜底）
+ * - refreshAfterWrite（软过期）→ reload → 调用方传入的 refresher（仅对齐快照源）
+ * - 空值保护：loader / refresher 返回 null 一律落内部占位——"缓存空值"把探测拦在本地，
+ *   get 出口还原为 null；占位随硬过期自清、被后续刷新覆盖
  *
- * 内置缓存穿透保护：空值缓存短时间，防止重复查询不存在的数据。
+ * "加载链怎么组、空值形态是什么（null / 空列表）"由调用方的两个函数自行定义。
  */
 public class CaffeineCache<V> {
 
     private static final String NULL_PLACEHOLDER = "##NULL##";
 
     private final LoadingCache<String, V> cache;
-    private final Function<String, V> redisLoader;
-    private final Function<String, V> fallbackLoader;
 
     /**
      * @param writeExpireSeconds 硬过期时间（秒）
      * @param refreshSeconds     软过期时间（秒）
      * @param maximumSize        最大缓存数量
-     * @param redisLoader        从 Redis 加载
-     * @param fallbackLoader     回源加载（硬过期且 Redis 没有时调用）
+     * @param loader             全链加载：硬过期/首次访问时调用（调用方自组：快照源 → 回源兜底）
+     * @param refresher          软过期刷新：仅对齐快照源（返回 null 同落空值保护）
      */
     public CaffeineCache(int writeExpireSeconds,
                          int refreshSeconds,
                          int maximumSize,
-                         Function<String, V> redisLoader,
-                         Function<String, V> fallbackLoader) {
-        this.redisLoader = redisLoader;
-        this.fallbackLoader = fallbackLoader;
-
+                         Function<String, V> loader,
+                         Function<String, V> refresher) {
         this.cache = Caffeine.newBuilder()
                 .maximumSize(maximumSize)
-                .recordStats()
                 .expireAfterWrite(writeExpireSeconds, TimeUnit.SECONDS)
                 .refreshAfterWrite(refreshSeconds, TimeUnit.SECONDS)
                 .build(new CacheLoader<>() {
                     @Override
                     public V load(String key) {
-                        return loadWithFallback(key);
+                        return cacheNull(loader.apply(key));
                     }
 
                     @Override
                     public V reload(String key, V oldValue) {
-                        // 刷新只对齐 Redis：Redis 已无该键（被回收/清理）时返回 null，条目随之移除，
-                        // 下次访问退回 load 全链（含回源兜底）；空值占位符也借此自清。
-                        return redisLoader.apply(key);
+                        return cacheNull(refresher.apply(key));
                     }
                 });
-    }
-
-    @SuppressWarnings("unchecked")
-    private V loadWithFallback(String key) {
-        V value = redisLoader.apply(key);
-        if (value != null) {
-            return value;
-        }
-        V fallbackValue = fallbackLoader.apply(key);
-        if (fallbackValue == null) {
-            return (V) NULL_PLACEHOLDER;
-        }
-        return fallbackValue;
     }
 
     public V get(String key) {
@@ -80,27 +60,11 @@ public class CaffeineCache<V> {
         return value;
     }
 
-    public void put(String key, V value) {
-        if (value != null) {
-            cache.put(key, value);
-        }
-    }
-
-    public void evict(String key) {
-        cache.invalidate(key);
-    }
-
     /**
-     * 获取缓存统计信息
+     * null → 占位（Caffeine 的 load 不允许返回 null；占位让空值本身进入缓存、把探测拦在本地）
      */
-    public String stats() {
-        return cache.stats().toString();
-    }
-
-    /**
-     * 当前缓存大小
-     */
-    public long size() {
-        return cache.estimatedSize();
+    @SuppressWarnings("unchecked")
+    private static <V> V cacheNull(V value) {
+        return value == null ? (V) NULL_PLACEHOLDER : value;
     }
 }

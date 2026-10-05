@@ -38,7 +38,7 @@ public class ActivityController {
      */
     @GetMapping("/{activityNo}/products")
     public Result<List<ActivityProductVO>> getProductList(@PathVariable String activityNo) {
-        return Result.success(activityQueryService.getProductListByActivityNo(activityNo));
+        return Result.success(activityQueryService.getSkuListByActivityNo(activityNo));
     }
 
     /**

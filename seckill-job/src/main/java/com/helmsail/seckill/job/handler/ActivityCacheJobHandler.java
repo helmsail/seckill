@@ -101,6 +101,8 @@ public class ActivityCacheJobHandler {
                 writeShelfKeys(activityNo, rows);
                 // 部分四：库存（判断活动状态，仅待开始）
                 writeStockKeys(activity, rows);
+                // 部分五：限购上限（静态配置，声明式覆盖）
+                writeQuotaKeys(activityNo, rows);
                 processed++;
             } catch (Exception e) {
                 log.error("活动缓存同步失败: activityNo={}", activity.getActivityNo(), e);
@@ -129,7 +131,7 @@ public class ActivityCacheJobHandler {
     }
 
     /**
-     * 覆盖写商品SKU列表快照 → seckill:activity:products:{activityNo}
+     * 覆盖写商品SKU列表快照 → seckill:activity:{activityNo}:skus
      *
      * 快照只留静态目录：剔除库表带出的库存配额与上下架状态——二者由独立 key 承担，
      * 查询时由 service 从 key 拼装（免得快照里的旧值造成混淆）。
@@ -148,7 +150,7 @@ public class ActivityCacheJobHandler {
     }
 
     /**
-     * 覆盖写在售名单 → seckill:sku:shelf:{activityNo}:{skuNo}（value=1 上架 / 0 下架）
+     * 覆盖写在售名单 → seckill:activity:{activityNo}:sku:{skuNo}:shelf（value=1 上架 / 0 下架）
      *
      * 声明式全量覆盖（下架同样写 0，不能跳过）；激活瞬间名单已就绪，无需等待首轮重建。
      */
@@ -160,7 +162,7 @@ public class ActivityCacheJobHandler {
     }
 
     /**
-     * 缺省初始化库存计数 → seckill:sku:stock:{activityNo}:{skuNo}
+     * 缺省初始化库存计数 → seckill:activity:{activityNo}:sku:{skuNo}:stock
      *
      * 需判断活动状态：仅待开始缺省写入（仅 key 不存在时初始化，绝不覆盖运行期已扣减的实时值）；
      * 进行中 / 已暂停不触碰。
@@ -173,6 +175,19 @@ public class ActivityCacheJobHandler {
         for (SeckillProductSkuDTO row : rows) {
             String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
             redisService.setIfAbsent(stockKey, String.valueOf(row.getActivityStock()));
+        }
+    }
+
+    /**
+     * 覆盖写限购上限 → seckill:activity:{activityNo}:sku:{skuNo}:quota
+     *
+     * 静态配置、声明式全量覆盖（删除重加可能改限购，运行期不消费该键，覆盖无副作用）；
+     * 校验侧（CheckService）直读，避免展示缓存窗口。
+     */
+    private void writeQuotaKeys(String activityNo, List<SeckillProductSkuDTO> rows) {
+        for (SeckillProductSkuDTO row : rows) {
+            String quotaKey = String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, row.getSkuNo());
+            redisService.set(quotaKey, String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()));
         }
     }
 }

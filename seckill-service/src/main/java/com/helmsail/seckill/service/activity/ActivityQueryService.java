@@ -53,164 +53,18 @@ public class ActivityQueryService {
     private static final long NULL_MARKER_TTL_SECONDS = 60L;
 
     private CaffeineCache<List<ActivityDTO>> activityListCache;
-    private CaffeineCache<ActivityDTO> activityInfoCache;
-    private CaffeineCache<List<SeckillProductSkuDTO>> activityProductCache;
+    private CaffeineCache<ActivityDTO> activityByNoCache;
+    private CaffeineCache<List<SeckillProductSkuDTO>> activitySkusCache;
+
+    // ==================== 对外查询 ====================
 
     @PostConstruct
     public void init() {
-        activityListCache = new CaffeineCache<>(30, 10, 1000, this::loadActivityList, this::fallbackActivityList);
-        // 活动状态流转（激活/关闭）依赖 refresh job 同步 Redis 快照，硬过期从 300s 收紧到 60s 缩短 C 端生效延迟窗口
-        activityInfoCache = new CaffeineCache<>(60, 30, 1000, this::loadActivityInfo, this::fallbackActivityInfo);
-        activityProductCache = new CaffeineCache<>(300, 60, 1000, this::loadProductList, this::fallbackProductList);
-    }
-
-    private List<ActivityDTO> loadActivityList(String key) {
-        Map<Object, Object> all = redisService.hGetAll(SeckillRedisKey.KEY_ACTIVITY_INFO);
-        List<ActivityDTO> list = new ArrayList<>();
-        for (Object value : all.values()) {
-            ActivityDTO dto = parse((String) value, ActivityDTO.class);
-            // 列表仅展示可购/待开始活动（暂停、关闭不出现）
-            if (dto != null && (dto.getActivityStatus() == ActivityStatus.ACTIVE
-                    || dto.getActivityStatus() == ActivityStatus.PENDING)) {
-                list.add(dto);
-            }
-        }
-        return list;
-    }
-
-    private List<ActivityDTO> fallbackActivityList(String key) {
-        return activityService.listByStatus(ActivityStatus.ACTIVE);
-    }
-
-    private ActivityDTO loadActivityInfo(String key) {
-        return parse(redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, key), ActivityDTO.class);
-    }
-
-    private ActivityDTO fallbackActivityInfo(String key) {
-        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base
-        if (redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_INFO_NULL, key))) {
-            return null;
-        }
-        try {
-            ActivityDTO activity = activityService.getByActivityNo(key);
-            backfillActivityInfo(key, activity);
-            return activity;
-        } catch (Exception e) {
-            // 活动不存在：写短 TTL 负标记（跨实例短路回源、自清），返回 null 走空值缓存（穿透保护）
-            // DubboConsumerExceptionFilter 已还原业务异常；此处再沿 cause 链兜底运行时/代理的再包装
-            BizException bizException = findBizException(e);
-            if (bizException != null
-                    && SeckillResultEnum.ACTIVITY_NOT_FOUND.getCode().equals(bizException.getCode())) {
-                writeNullMarker(SeckillRedisKey.KEY_ACTIVITY_INFO_NULL, key);
-                return null;
-            }
-            throw e;
-        }
-    }
-
-    /**
-     * 回源回填：把兜底取到的活动信息同口径写回 Redis（无 TTL，与预热任务写入口径一致）
-     *
-     * 读路径由此成为"兜底写入者"：仅 Redis 未命中时写入，job 的分钟级覆盖仍是常态刷新；
-     * 回填失败仅记日志，不影响本次读取。
-     */
-    private void backfillActivityInfo(String activityNo, ActivityDTO activity) {
-        if (activity == null) {
-            return;
-        }
-        try {
-            redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo,
-                    objectMapper.writeValueAsString(activity));
-            log.info("活动信息回源回填 Redis: activityNo={}", activityNo);
-        } catch (Exception e) {
-            log.warn("活动信息回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);
-        }
-    }
-
-    /**
-     * 沿 cause 链查找 BizException（跨进程/框架包装后类型会丢失）
-     */
-    private static BizException findBizException(Throwable ex) {
-        for (Throwable t = ex; t != null; t = t.getCause()) {
-            if (t instanceof BizException bizException) {
-                return bizException;
-            }
-            if (t.getCause() == t) {
-                break;
-            }
-        }
-        return null;
-    }
-
-    private List<SeckillProductSkuDTO> loadProductList(String key) {
-        return parse(redisService.get(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
-                new TypeReference<>() {});
-    }
-
-    private List<SeckillProductSkuDTO> fallbackProductList(String activityNo) {
-        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base（空结果按空列表处理）
-        if (redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, activityNo))) {
-            return List.of();
-        }
-        List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
-        if (rows == null || rows.isEmpty()) {
-            writeNullMarker(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, activityNo);
-            return rows;
-        }
-        // 与快照同口径：剔除库表带出的库存配额与上下架，DB 运行态值不进缓存
-        // （二者由独立 key 承担，查询时统一从 key 拼装）
-        for (SeckillProductSkuDTO row : rows) {
-            row.setActivityStock(null);
-            row.setShelfStatus(null);
-        }
-        backfillProductSnapshot(activityNo, rows);
-        return rows;
-    }
-
-    /**
-     * 回源回填：把兜底取到的商品快照同口径写回 Redis（无 TTL）
-     *
-     * 空列表不回填——保留预热任务"空活动不写键"的约定，避免为可删除的空活动留残留键。
-     */
-    private void backfillProductSnapshot(String activityNo, List<SeckillProductSkuDTO> rows) {
-        try {
-            redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
-                    objectMapper.writeValueAsString(rows));
-            log.info("商品快照回源回填 Redis: activityNo={}, size={}", activityNo, rows.size());
-        } catch (Exception e) {
-            log.warn("商品快照回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);
-        }
-    }
-
-    /**
-     * 写"不存在/为空"负标记：短 TTL、TTL 自清、跨实例共享，用于短路回源（不再探测 base）
-     */
-    private void writeNullMarker(String keyPattern, String key) {
-        try {
-            redisService.set(String.format(keyPattern, key), "1", NULL_MARKER_TTL_SECONDS, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("负标记写入失败（忽略，不影响本次读取）: key={}", key, e);
-        }
-    }
-
-    private <T> T parse(String json, Class<T> clazz) {
-        if (json == null) return null;
-        try {
-            return objectMapper.readValue(json, clazz);
-        } catch (Exception e) {
-            log.error("解析失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private <T> T parse(String json, TypeReference<T> typeRef) {
-        if (json == null) return null;
-        try {
-            return objectMapper.readValue(json, typeRef);
-        } catch (Exception e) {
-            log.error("解析失败: {}", e.getMessage());
-            return null;
-        }
+        // 过期参数三族统一（60/30）：软 30s = 被访问条目的 Redis 对齐节奏；硬 60s = 全链重建周期
+        // （重建仅多一次 Redis 读，Redis 缺失才回源）——管理端改动 ≤30s 在 C 端可见
+        activityListCache = new CaffeineCache<>(60, 30, 1000, this::loadActivityList, this::refreshActivityList);
+        activityByNoCache = new CaffeineCache<>(60, 30, 1000, this::loadActivityByNo, this::refreshActivityByNo);
+        activitySkusCache = new CaffeineCache<>(60, 30, 1000, this::loadActivitySkus, this::refreshActivitySkus);
     }
 
     public List<ActivityDTO> listActivities() {
@@ -218,7 +72,7 @@ public class ActivityQueryService {
     }
 
     public ActivityDTO getActivityByNo(String activityNo) {
-        return activityInfoCache.get(activityNo);
+        return activityByNoCache.get(activityNo);
     }
 
     /**
@@ -227,8 +81,8 @@ public class ActivityQueryService {
      * 实时余量 / 上下架状态从库存键、在售键 MGET 读出后填入返回副本
      * （不污染缓存对象），前端无需再逐 SKU 单独拉取。
      */
-    public List<ActivityProductVO> getProductListByActivityNo(String activityNo) {
-        List<SeckillProductSkuDTO> rows = activityProductCache.get(activityNo);
+    public List<ActivityProductVO> getSkuListByActivityNo(String activityNo) {
+        List<SeckillProductSkuDTO> rows = activitySkusCache.get(activityNo);
         if (rows == null) {
             return null;
         }
@@ -260,19 +114,204 @@ public class ActivityQueryService {
         return stock != null ? Integer.parseInt(stock) : 0;
     }
 
+    // ==================== 加载链与辅助方法 ====================
+
     /**
-     * 查 SKU 限购数量（0=不限购；SKU 不在快照中返回 null，由调用方决定放行）
+     * 加载活动列表（全链）：对齐 Redis，键级缺席 → 负标记短路 → 回源（覆盖回填，field 相互隔离）
      */
-    public Integer getSkuPurchaseLimit(String activityNo, String skuNo) {
-        List<SeckillProductSkuDTO> rows = activityProductCache.get(activityNo);
-        if (rows == null) {
+    private List<ActivityDTO> loadActivityList(String key) {
+        List<ActivityDTO> hit = refreshActivityList(key);
+        if (hit != null) {
+            return hit;
+        }
+        // 键级缺席：负标记（跨实例共享、短 TTL）命中即短路，不再探测 base
+        if (Boolean.TRUE.equals(redisService.hasKey(SeckillRedisKey.KEY_ACTIVITY_LIST_NULL))) {
             return null;
         }
+        List<ActivityDTO> rows = activityService.listByStatus(ActivityStatus.ACTIVE);
+        if (rows == null || rows.isEmpty()) {
+            writeNullMarker(SeckillRedisKey.KEY_ACTIVITY_LIST_NULL);
+            return null;
+        }
+        // 覆盖回填（Hash field 相互隔离，不影响其他活动；口径与预热任务一致）
+        for (ActivityDTO activity : rows) {
+            backfillActivityByNo(activity.getActivityNo(), activity);
+        }
+        return rows;
+    }
+
+    /**
+     * 刷新活动列表（对齐 Redis hash）：仅可展示状态（ACTIVE / PENDING）
+     *
+     * Redis 存全量是为多读者与整存整取（结构使然）；本地缓存只服务列表视图，
+     * 不需要背负这份冗余——视图过滤放在这里。键级缺席返回 null（组件落空值保护，
+     * 重建由硬过期全链或预热任务兜底）；键在但过滤为空是合法视图（空列表，不回源）。
+     */
+    private List<ActivityDTO> refreshActivityList(String key) {
+        if (!Boolean.TRUE.equals(redisService.hasKey(SeckillRedisKey.KEY_ACTIVITY_INFO))) {
+            return null;
+        }
+        Map<Object, Object> all = redisService.hGetAll(SeckillRedisKey.KEY_ACTIVITY_INFO);
+        List<ActivityDTO> list = new ArrayList<>();
+        for (Object value : all.values()) {
+            // 坏数据剔除（数据可用性）+ 状态过滤（视图规则，见上）
+            ActivityDTO dto = parse((String) value, ActivityDTO.class);
+            if (dto != null && (dto.getActivityStatus() == ActivityStatus.ACTIVE
+                    || dto.getActivityStatus() == ActivityStatus.PENDING)) {
+                list.add(dto);
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 加载单个活动信息（全链）：对齐 Redis → 负标记短路 → 回源回填
+     */
+    private ActivityDTO loadActivityByNo(String key) {
+        ActivityDTO hit = refreshActivityByNo(key);
+        if (hit != null) {
+            return hit;
+        }
+        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base
+        if (Boolean.TRUE.equals(redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_INFO_NULL, key)))) {
+            return null;
+        }
+        try {
+            ActivityDTO activity = activityService.getByActivityNo(key);
+            backfillActivityByNo(key, activity);
+            return activity;
+        } catch (Exception e) {
+            // 活动不存在：写短 TTL 负标记（跨实例短路回源、自清），返回 null 走空值缓存（穿透保护）
+            // DubboConsumerExceptionFilter 已还原业务异常；此处再沿 cause 链兜底运行时/代理的再包装
+            BizException bizException = findBizException(e);
+            if (bizException != null
+                    && SeckillResultEnum.ACTIVITY_NOT_FOUND.getCode().equals(bizException.getCode())) {
+                writeNullMarker(String.format(SeckillRedisKey.KEY_ACTIVITY_INFO_NULL, key));
+                return null;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 刷新单个活动信息（对齐 Redis hash 单 field；缺席返回 null，由组件落空值保护）
+     */
+    private ActivityDTO refreshActivityByNo(String key) {
+        return parse(redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, key), ActivityDTO.class);
+    }
+
+    /**
+     * 回源回填：把兜底取到的活动信息同口径写回 Redis（无 TTL，与预热任务写入口径一致）
+     *
+     * 读路径由此成为"兜底写入者"：仅 Redis 未命中时写入，job 的分钟级覆盖仍是常态刷新；
+     * 回填失败仅记日志，不影响本次读取。
+     */
+    private void backfillActivityByNo(String activityNo, ActivityDTO activity) {
+        if (activity == null) {
+            return;
+        }
+        try {
+            redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo,
+                    objectMapper.writeValueAsString(activity));
+            log.info("活动信息回源回填 Redis: activityNo={}", activityNo);
+        } catch (Exception e) {
+            log.warn("活动信息回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);
+        }
+    }
+
+    /**
+     * 加载活动 SKU 快照（全链）：对齐 Redis → 负标记短路（按空列表处理）→ 回源（剔除运行态）并回填
+     */
+    private List<SeckillProductSkuDTO> loadActivitySkus(String key) {
+        List<SeckillProductSkuDTO> hit = refreshActivitySkus(key);
+        if (hit != null) {
+            return hit;
+        }
+        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base（空结果按空列表处理）
+        if (Boolean.TRUE.equals(redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, key)))) {
+            return List.of();
+        }
+        List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(key);
+        if (rows == null || rows.isEmpty()) {
+            writeNullMarker(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, key));
+            return rows;
+        }
+        // 与快照同口径：剔除库表带出的库存配额与上下架，DB 运行态值不进缓存
+        // （二者由独立 key 承担，查询时统一从 key 拼装）
         for (SeckillProductSkuDTO row : rows) {
-            if (row.getSkuNo().equals(skuNo)) {
-                return row.getPurchaseLimit();
+            row.setActivityStock(null);
+            row.setShelfStatus(null);
+        }
+        backfillActivitySkus(key, rows);
+        return rows;
+    }
+
+    /**
+     * 刷新活动 SKU 快照（对齐 Redis 快照键；缺席返回 null，由组件落空值保护）
+     */
+    private List<SeckillProductSkuDTO> refreshActivitySkus(String key) {
+        return parse(redisService.get(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
+                new TypeReference<>() {});
+    }
+
+    /**
+     * 回源回填：把兜底取到的商品快照同口径写回 Redis（无 TTL）
+     *
+     * 空列表不回填——保留预热任务"空活动不写键"的约定，避免为可删除的空活动留残留键。
+     */
+    private void backfillActivitySkus(String activityNo, List<SeckillProductSkuDTO> rows) {
+        try {
+            redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
+                    objectMapper.writeValueAsString(rows));
+            log.info("商品快照回源回填 Redis: activityNo={}, size={}", activityNo, rows.size());
+        } catch (Exception e) {
+            log.warn("商品快照回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);
+        }
+    }
+
+    /**
+     * 写“不存在/为空”负标记：短 TTL、TTL 自清、跨实例共享，用于短路回源（不再探测 base）
+     */
+    private void writeNullMarker(String key) {
+        try {
+            redisService.set(key, "1", NULL_MARKER_TTL_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("负标记写入失败（忽略，不影响本次读取）: key={}", key, e);
+        }
+    }
+
+    /**
+     * 沿 cause 链查找 BizException（跨进程/框架包装后类型会丢失）
+     */
+    private static BizException findBizException(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof BizException bizException) {
+                return bizException;
+            }
+            if (t.getCause() == t) {
+                break;
             }
         }
         return null;
+    }
+
+    private <T> T parse(String json, Class<T> clazz) {
+        if (json == null) return null;
+        try {
+            return objectMapper.readValue(json, clazz);
+        } catch (Exception e) {
+            log.error("解析失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private <T> T parse(String json, TypeReference<T> typeRef) {
+        if (json == null) return null;
+        try {
+            return objectMapper.readValue(json, typeRef);
+        } catch (Exception e) {
+            log.error("解析失败: {}", e.getMessage());
+            return null;
+        }
     }
 }
