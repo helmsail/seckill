@@ -255,14 +255,19 @@ public class ActivityQueryService {
     }
 
     /**
-     * 回源回填：把兜底取到的商品快照同口径写回 Redis（无 TTL）
+     * 回源回填：把兜底取到的商品快照同口径写回 Redis（无 TTL）；顺带分离回填 quota 键
      *
-     * 空列表不回填——保留预热任务"空活动不写键"的约定，避免为可删除的空活动留残留键。
+     * 空列表不回填——保留预热任务“空活动不写键”的约定，避免为可删除的空活动留残留键。
      */
     private void backfillActivitySkus(String activityNo, List<SeckillProductSkuDTO> rows) {
         try {
             redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
                     objectMapper.writeValueAsString(rows));
+            // 静态字段的分离快照同步回填（供门禁点读；口径与预热任务一致）
+            for (SeckillProductSkuDTO row : rows) {
+                redisService.set(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, row.getSkuNo()),
+                        String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()));
+            }
             log.info("商品快照回源回填 Redis: activityNo={}, size={}", activityNo, rows.size());
         } catch (Exception e) {
             log.warn("商品快照回填 Redis 失败（忽略，不影响本次读取）: activityNo={}", activityNo, e);

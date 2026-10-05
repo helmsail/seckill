@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityDubboService;
 import com.helmsail.seckill.base.activity.ActivityStatus;
+import com.helmsail.seckill.base.activity.WeekBitmap;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
@@ -12,9 +13,9 @@ import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -26,15 +27,17 @@ import java.util.List;
  * 将"窗口内待开始 / 进行中 / 已暂停"活动从 base 库搬进 Redis：获取 → 过滤合并 → 逐个处理。
  *
  * 1. 获取：PENDING/ACTIVE/PAUSED 各拉一次；
- * 2. 过滤合并：待开始只留进入预热窗口的（窗口外不缓存——远期活动提前缓存没有意义），加进行中、已暂停合成处理列表；
- * 3. 逐个处理（四个部分）：
- *    - 活动信息快照：覆盖写 seckill:activity:info（Hash，field=activityNo），使暂停/激活/信息变更（含管理端手动操作）在运行期生效；
- *    - 活动与SKU：覆盖写商品快照，库存与上下架从快照剔除、抠出后由下方两方法单独写 key；
- *    - 上下架：单独方法覆盖写在售名单（下架同样写 0，不能跳过），激活瞬间名单已就绪；
- *    - 库存：单独方法缺省初始化，需判断活动状态——仅待开始写入（setIfAbsent 只补缺不覆盖）。
+ * 2. 过滤合并：待开始只留进入预热窗口的（三合一：今天可售 + 临近今天的开场；窗口外不缓存——远期/非可售日不占缓存），加进行中、已暂停合成处理列表；
+ * 3. 逐个活动处理（一活动的数据一趟内完成）：
+ *    - 覆写活动信息 Hash（覆盖即刷新、新增即补充），使暂停/激活/信息变更（含管理端手动操作）在运行期生效；
+ *    - 逐 SKU 写运行态键：库存（仅待开始 setIfAbsent 缺省初始化，绝不覆盖运行期已扣减的实时值）→
+ *      上下架（声明式覆盖，下架同样写 0，激活瞬间名单已就绪）→ 限购上限（静态配置，删除重加可能改值）；
+ *    - 全体 SKU 处理完毕后整体化为 JSON 写入快照键——运行态字段已就地剔除，快照只留静态目录（免得旧值混淆）。
  *
- * 库存仅在本任务"待开始"分支被写入，其余任何分支与状态永不触碰库存键——
- * 运行期实时值只被扣减/回补/终态归还修改；所有 key 不设 TTL，终态回收与孤儿清理见 ActivityRecoveryJobHandler。
+ * 库存仅在本任务“待开始”分支被写入，其余任何分支与状态永不触碰库存键——
+ * 运行期实时值只被扣减/回补修改（活动终态归还尚未实现）；所有 key 不设 TTL。
+ * 已知边界：活动关闭/删除后离开三态，本任务不再覆盖，缓存残留（Hash field 与 SKU 键）当前无清理方——
+ * 正确性由 processor 的 DB 终判兜底（状态流转见 ActivityStatusJobHandler，仅操作 DB 不碰缓存）。
  */
 @Slf4j
 @Service
@@ -65,21 +68,21 @@ public class ActivityCacheJobHandler {
         List<ActivityDTO> all = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
         for (ActivityDTO activity : pending) {
-            if (isInWarmUpWindow(activity, now)) {
+            if (inPreheatWindow(activity, now)) {
                 all.add(activity);
             }
         }
         all.addAll(active);
         all.addAll(paused);
 
-        // 处理——逐个活动走四个部分：活动信息 / 活动与SKU / 上下架 / 库存
+        // 处理——逐个活动：覆写 Hash → 逐 SKU 运行态键 → 整体快照
         int processed = process(all);
 
         log.info("活动缓存同步任务完成: 处理={}", processed);
     }
 
     /**
-     * 逐个处理——四个部分：活动信息快照 / 活动与SKU（商品快照）/ 上下架 / 库存（判断活动状态）；
+     * 逐个活动处理——覆写 Hash → 逐 SKU 写运行态键（库存仅待开始）→ 整体化为 JSON 快照；
      * 单活动失败隔离，下轮自愈。
      */
     private int process(List<ActivityDTO> activities) {
@@ -87,22 +90,39 @@ public class ActivityCacheJobHandler {
         for (ActivityDTO activity : activities) {
             try {
                 String activityNo = activity.getActivityNo();
+                boolean pending = activity.getActivityStatus() == ActivityStatus.PENDING;
+
+                // 查询该活动的 SKU
                 List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(activityNo);
-                if (rows.isEmpty() && activity.getActivityStatus() == ActivityStatus.PENDING) {
+                if (rows.isEmpty() && pending) {
                     // 待开始无商品：什么都不写（同时避免为可被删除的空活动写入残留缓存）；进行中/已暂停空列表照写空快照
                     log.info("活动无商品，跳过: activityNo={}", activityNo);
                     continue;
                 }
-                // 部分一：活动信息快照
-                writeInfo(activity);
-                // 部分二：活动与SKU（商品快照，库存与上下架从中剔除）
-                writeProductSnapshot(activityNo, rows);
-                // 部分三：上下架
-                writeShelfKeys(activityNo, rows);
-                // 部分四：库存（判断活动状态，仅待开始）
-                writeStockKeys(activity, rows);
-                // 部分五：限购上限（静态配置，声明式覆盖）
-                writeQuotaKeys(activityNo, rows);
+
+                // 覆写活动信息 Hash（覆盖即刷新、新增即补充）
+                redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo,
+                        objectMapper.writeValueAsString(activity));
+
+                // 逐 SKU：库存（仅待开始）→ 上下架 → 限购上限 → 就地剔除（供快照）
+                for (SeckillProductSkuDTO row : rows) {
+                    String skuNo = row.getSkuNo();
+                    if (pending) {
+                        redisService.setIfAbsent(String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, skuNo),
+                                String.valueOf(row.getActivityStock()));
+                    }
+                    redisService.set(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, skuNo),
+                            row.getShelfStatus() != null && row.getShelfStatus() == 1 ? "1" : "0");
+                    redisService.set(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, skuNo),
+                            String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()));
+                    // 运行态值已入键，就地剔除——快照只留静态目录（免得旧值混淆）
+                    row.setActivityStock(null);
+                    row.setShelfStatus(null);
+                }
+
+                // 全体 SKU 处理完毕，整体化为 JSON 写入快照键
+                redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
+                        objectMapper.writeValueAsString(rows));
                 processed++;
             } catch (Exception e) {
                 log.error("活动缓存同步失败: activityNo={}", activity.getActivityNo(), e);
@@ -112,82 +132,25 @@ public class ActivityCacheJobHandler {
     }
 
     /**
-     * 是否进入预热窗口 [开始前 30 分钟, 开始时间]
+     * 待开始活动是否进入预热窗口：今天可售（日期 ∩ 周位图）且临近今天的开场时段
+     *
+     * 三合判定：今天∈[startDate, endDate] ∧ 位图含今天 ∧ now∈[今天 startTime−30min, 今天 startTime]
+     * ——“开场”按当天重算（多场活动的后续场次由 ACTIVE 全量刷新兜住，无需再次预热）；
+     * ACTIVE / PAUSED 不受窗口限制，每轮全量处理。
      */
-    private boolean isInWarmUpWindow(ActivityDTO activity, LocalDateTime now) {
-        LocalDateTime activateMoment = LocalDateTime.of(activity.getStartDate(), activity.getStartTime());
-        long secondsUntilStart = ChronoUnit.SECONDS.between(now, activateMoment);
-        return secondsUntilStart >= 0 && secondsUntilStart <= WARM_UP_WINDOW_SECONDS;
+    private boolean inPreheatWindow(ActivityDTO activity, LocalDateTime now) {
+        LocalDate today = now.toLocalDate();
+        // 日期：今天在活动日期范围内
+        if (today.isBefore(activity.getStartDate()) || today.isAfter(activity.getEndDate())) {
+            return false;
+        }
+        // 星期：周位图含今天
+        if (!WeekBitmap.isActive(activity.getWeekBitmap(), today.getDayOfWeek())) {
+            return false;
+        }
+        // 时段：临近当天开场（startTime）前 30 分钟窗口
+        long secondsUntilOpen = ChronoUnit.SECONDS.between(now, LocalDateTime.of(today, activity.getStartTime()));
+        return secondsUntilOpen >= 0 && secondsUntilOpen <= WARM_UP_WINDOW_SECONDS;
     }
 
-    /**
-     * 覆盖写活动信息快照 → seckill:activity:info（Hash，field=activityNo）
-     *
-     * 每分钟重复执行、重复覆盖即刷新为最新快照，使暂停/激活/信息变更（含管理端手动操作）在运行期生效。
-     */
-    private void writeInfo(ActivityDTO activity) throws Exception {
-        redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activity.getActivityNo(),
-                objectMapper.writeValueAsString(activity));
-    }
-
-    /**
-     * 覆盖写商品SKU列表快照 → seckill:activity:{activityNo}:skus
-     *
-     * 快照只留静态目录：剔除库表带出的库存配额与上下架状态——二者由独立 key 承担，
-     * 查询时由 service 从 key 拼装（免得快照里的旧值造成混淆）。
-     */
-    private void writeProductSnapshot(String activityNo, List<SeckillProductSkuDTO> rows) throws Exception {
-        List<SeckillProductSkuDTO> snapshot = new ArrayList<>(rows.size());
-        for (SeckillProductSkuDTO row : rows) {
-            SeckillProductSkuDTO copy = new SeckillProductSkuDTO();
-            BeanUtils.copyProperties(row, copy);
-            copy.setActivityStock(null);
-            copy.setShelfStatus(null);
-            snapshot.add(copy);
-        }
-        redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
-                objectMapper.writeValueAsString(snapshot));
-    }
-
-    /**
-     * 覆盖写在售名单 → seckill:activity:{activityNo}:sku:{skuNo}:shelf（value=1 上架 / 0 下架）
-     *
-     * 声明式全量覆盖（下架同样写 0，不能跳过）；激活瞬间名单已就绪，无需等待首轮重建。
-     */
-    private void writeShelfKeys(String activityNo, List<SeckillProductSkuDTO> rows) {
-        for (SeckillProductSkuDTO row : rows) {
-            String shelfKey = String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, row.getSkuNo());
-            redisService.set(shelfKey, row.getShelfStatus() != null && row.getShelfStatus() == 1 ? "1" : "0");
-        }
-    }
-
-    /**
-     * 缺省初始化库存计数 → seckill:activity:{activityNo}:sku:{skuNo}:stock
-     *
-     * 需判断活动状态：仅待开始缺省写入（仅 key 不存在时初始化，绝不覆盖运行期已扣减的实时值）；
-     * 进行中 / 已暂停不触碰。
-     */
-    private void writeStockKeys(ActivityDTO activity, List<SeckillProductSkuDTO> rows) {
-        if (activity.getActivityStatus() != ActivityStatus.PENDING) {
-            return;
-        }
-        String activityNo = activity.getActivityNo();
-        for (SeckillProductSkuDTO row : rows) {
-            String stockKey = String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo());
-            redisService.setIfAbsent(stockKey, String.valueOf(row.getActivityStock()));
-        }
-    }
-
-    /**
-     * 覆盖写限购上限 → seckill:activity:{activityNo}:sku:{skuNo}:quota
-     *
-     * 静态配置、声明式全量覆盖（删除重加可能改限购，运行期不消费该键，覆盖无副作用）；
-     * 校验侧（CheckService）直读，避免展示缓存窗口。
-     */
-    private void writeQuotaKeys(String activityNo, List<SeckillProductSkuDTO> rows) {
-        for (SeckillProductSkuDTO row : rows) {
-            String quotaKey = String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, row.getSkuNo());
-            redisService.set(quotaKey, String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()));
-        }
-    }
 }

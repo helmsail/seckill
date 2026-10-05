@@ -9,7 +9,8 @@ import java.math.BigDecimal;
  * 活动商品查询视图（C 端列表返回）
  *
  * 独立视图，不携带总库存、库表主键等内部字段：目录字段来自快照 / 回源，
- * 运行态字段（实时余量、上下架）由库存键 / 在售键值替换填充。
+ * 运行态字段（实时余量、上下架）由库存键 / 在售键值替换填充；
+ * 限购上限属校验数据（quota 键），不在展示视图。
  */
 @Data
 public class ActivityProductVO {
@@ -23,7 +24,6 @@ public class ActivityProductVO {
     private BigDecimal discountParameter;
     private BigDecimal originalPrice;
     private BigDecimal seckillPrice;
-    private Integer purchaseLimit;
 
     /** 实时余量（查询时从库存键替换填充） */
     private Integer remainingStock;
