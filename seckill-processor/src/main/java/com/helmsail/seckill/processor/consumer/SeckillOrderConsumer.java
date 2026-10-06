@@ -137,16 +137,29 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
         int quantity = request.getQuantity();
 
         // 扣减与 traceId 标记同脚本原子完成：重投重放时跳过已扣步骤（返回"已扣"视为成功）
+        // ① 活动级限购（每人该活动合计；总闸先判；上限取 DB 活动数据，顺手可得）
+        boolean activityLimitPassed = purchaseLimitService.deductActivity(activityNo, userId,
+                activity.getPurchaseLimit() == null ? 0 : activity.getPurchaseLimit(), quantity, idempotentKey);
+        if (!activityLimitPassed) {
+            consumeStateService.markFailed(idempotentKey, "超过活动限购");
+            return;
+        }
+
+        // ② SKU 级限购
         boolean limitPassed = purchaseLimitService.deduct(activityNo, skuNo, userId,
                 sku.getPurchaseLimit(), quantity, idempotentKey);
         if (!limitPassed) {
+            // 回补活动级（标记守卫幂等）；回补失败仅记日志，业务失败语义不变
+            purchaseLimitService.restoreActivity(activityNo, userId, quantity, idempotentKey);
             consumeStateService.markFailed(idempotentKey, "超过限购");
             return;
         }
 
+        // ③ 库存
         boolean stockPassed = stockService.deduct(activityNo, skuNo, quantity, idempotentKey);
         if (!stockPassed) {
-            // 回补限购（标记守卫幂等）；回补失败仅记日志，业务失败语义不变
+            // 回补限购两层（标记守卫幂等）；回补失败仅记日志，业务失败语义不变
+            purchaseLimitService.restoreActivity(activityNo, userId, quantity, idempotentKey);
             purchaseLimitService.restore(activityNo, skuNo, userId, quantity, idempotentKey);
             consumeStateService.markFailed(idempotentKey, "库存不足");
             return;
@@ -293,6 +306,8 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
         stockService.restore(request.getActivityNo(), request.getSkuNo(), request.getQuantity(), traceId);
         purchaseLimitService.restore(request.getActivityNo(), request.getSkuNo(),
                 request.getUserId(), request.getQuantity(), traceId);
+        purchaseLimitService.restoreActivity(request.getActivityNo(), request.getUserId(),
+                request.getQuantity(), traceId);
     }
 
     /** 按 traceId 查订单（带 userId 路由分片）；查询异常上抛由上层统一兜底 */

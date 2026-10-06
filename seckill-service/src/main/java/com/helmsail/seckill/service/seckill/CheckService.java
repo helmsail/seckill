@@ -3,11 +3,11 @@ package com.helmsail.seckill.service.seckill;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.activity.ActivityDTO;
 import com.helmsail.seckill.base.activity.ActivityStatus;
-import com.helmsail.seckill.base.activity.WeekBitmap;
 import com.helmsail.seckill.base.redis.SeckillRedisKey;
 import com.helmsail.seckill.base.result.SeckillResultEnum;
 import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.redis.RedisService;
+import com.helmsail.seckill.common.tracing.UserContext;
 import com.helmsail.seckill.service.config.SeckillConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,17 +17,16 @@ import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 秒杀准入检查（六项合一）
+ * 秒杀准入检查（七项合一）
  *
- * 限流 / 活动（抢跑拉黑 + 生效窗口）/ 黑名单 / 限购 / 在售 / 库存——“请求能否进入秒杀”的全部前置判定集中于此，
+ * 限流 / 活动（抢跑拉黑 + 时间窗）/ 黑名单 / 活动限购 / SKU 在售 / SKU 限购 / SKU 库存——“请求能否进入秒杀”的全部前置判定集中于此，
  * 按“用户 → 活动 → 商品 → 资源”顺序逐层收缩，方法序与 SeckillService 的调用顺序一致，逐项失败即抛对应业务码。
- * 所有检查均直读 Redis（快照 / 键）做前置过滤，正确性以 processor 的 DB 权威终判为准。
+ * 所有检查均直读 Redis（快照 / 键）做前置过滤，用户身份自请求上下文（UserContext）就地获取；
+ * 正确性以 processor 的 DB 权威终判为准。
  */
 @Slf4j
 @Service
@@ -42,7 +41,8 @@ public class CheckService {
     /**
      * 限流检查（用户级令牌桶，全实例共享同一配额）
      */
-    public void checkRateLimit(String userId) {
+    public void checkRateLimit() {
+        String userId = UserContext.currentUserId();
         String key = String.format(SeckillRedisKey.KEY_RATE_LIMIT, userId);
         RRateLimiter rateLimiter = redissonClient.getRateLimiter(key);
 
@@ -61,47 +61,53 @@ public class CheckService {
     }
 
     /**
-     * 活动检查（抢跑拉黑 + 生效窗口）
+     * 活动检查 = 防抢跑（安全）+ 准入（状态 + 时间窗）
      *
-     * ① 抢跑拉黑：PENDING 且处于 [开始前 window-from-seconds, 开始前 window-to-seconds) 窗口内的
-     * 请求视为脚本提前抢购——写入 Redis 黑名单（后续请求由 checkBlacklist 拦截）并拒绝；
-     * 更贴近开始（含已开始）不再拉黑，避免误伤正常用户。
-     * ② 生效窗口：状态=进行中 + 日期范围 + 当天时段 + 周位图，任一不满足即拒绝，避免无效请求白跑 MQ；
-     * 运行期是否已结束由 processor 的 DB 状态终判兜底。
+     * 时间窗以活动的开始时刻 a 与结束时刻 b 为基准：now ∈ [a - windowRight, b] 放行，
+     * [a - windowLeft, a - windowRight) 拉黑并拒；日期范围与周位图不在读侧重复校验
+     * （按“写侧筛选、读侧信快照”的约定）；真实生效以 processor 的 DB 状态终判为准。
      */
-    public void checkActivity(String activityNo, String userId) {
-        // 直读 Redis hash（校验不走查询侧缓存；miss / 坏数据按不可用拒绝）
-        ActivityDTO activity = readActivity(activityNo);
+    public void checkActivity(String activityNo) {
+        String userId = UserContext.currentUserId();
+        // 读活动：miss / 解析失败均按不可用拒绝
+        String json = redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo);
+        ActivityDTO activity = null;
+        if (json != null) {
+            try {
+                activity = objectMapper.readValue(json, ActivityDTO.class);
+            } catch (Exception e) {
+                log.error("活动信息解析失败: activityNo={}", activityNo, e);
+            }
+        }
         if (activity == null) {
             throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
         }
 
-        LocalDateTime now = LocalDateTime.now();
-
-        // ① 抢跑拉黑：仅 PENDING + 窗口 [开始前 windowFrom, 开始前 windowTo)
-        if (activity.getActivityStatus() == ActivityStatus.PENDING) {
-            LocalDateTime start = LocalDateTime.of(activity.getStartDate(), activity.getStartTime());
-            boolean inEarlyWindow = !now.isBefore(start.minusSeconds(config.getBlacklist().getWindowFromSeconds()))
-                    && now.isBefore(start.minusSeconds(config.getBlacklist().getWindowToSeconds()));
-            if (inEarlyWindow) {
-                // 写入黑名单（TTL 到期自动解除），后续请求由 checkBlacklist 拦截
-                redisService.set(String.format(SeckillRedisKey.KEY_BLACKLIST, userId),
-                        "活动未开始时请求秒杀", config.getBlacklist().getExpireSeconds(), TimeUnit.SECONDS);
-                log.warn("抢跑拉黑: userId={}, activityNo={}", userId, activityNo);
-                throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
-            }
+        // 状态：仅进行中 / 待开始可继续（不细分具体状态），其余拒绝
+        ActivityStatus status = activity.getActivityStatus();
+        if (status != ActivityStatus.ACTIVE && status != ActivityStatus.PENDING) {
+            throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
         }
 
-        // ② 生效窗口：进行中 + 日期范围 + 当天时段 + 周位图
-        LocalDate today = now.toLocalDate();
-        LocalTime time = now.toLocalTime();
-        boolean effective = activity.getActivityStatus() == ActivityStatus.ACTIVE
-                && !today.isBefore(activity.getStartDate())
-                && !today.isAfter(activity.getEndDate())
-                && !time.isBefore(activity.getStartTime())
-                && !time.isAfter(activity.getEndTime())
-                && WeekBitmap.isActive(activity.getWeekBitmap(), today.getDayOfWeek());
-        if (!effective) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime start = LocalDateTime.of(activity.getStartDate(), activity.getStartTime());
+        LocalDateTime end = LocalDateTime.of(activity.getEndDate(), activity.getEndTime());
+        LocalDateTime blacklistFrom = start.minusSeconds(config.getBlacklist().getWindowFromSeconds());
+        LocalDateTime openFrom = start.minusSeconds(config.getBlacklist().getWindowToSeconds());
+
+        // ① 防抢跑（安全侧）：[开始前 windowLeft 秒, 开始前 windowRight 秒) 视为脚本提前抢购——
+        //    写入黑名单（TTL 到期自动解除，后续请求由 checkBlacklist 拦截）并拒绝；
+        //    windowLeft 覆盖预热期（预热只发生在开始前 30 分钟内，提前来的只可能是脚本或探测）
+        if (!now.isBefore(blacklistFrom) && now.isBefore(openFrom)) {
+            redisService.set(String.format(SeckillRedisKey.KEY_BLACKLIST, userId),
+                    "活动未开始时请求秒杀", config.getBlacklist().getExpireSeconds(), TimeUnit.SECONDS);
+            log.warn("抢跑拉黑: userId={}, activityNo={}", userId, activityNo);
+            throw new BizException(SeckillResultEnum.ACTIVITY_STATUS_ERROR);
+        }
+
+        // ② 开放区 [开始前 windowRight 秒, 结束时刻]：放行（含准点容差与快照滞后过渡态，
+        //    真实生效由 processor 的 DB 终判兜底）；其余（更早 / 晚于结束）一律拒绝
+        if (now.isBefore(openFrom) || now.isAfter(end)) {
             throw new BizException(SeckillResultEnum.ACTIVITY_NOT_EFFECTIVE);
         }
     }
@@ -109,7 +115,8 @@ public class CheckService {
     /**
      * 黑名单检查
      */
-    public void checkBlacklist(String userId) {
+    public void checkBlacklist() {
+        String userId = UserContext.currentUserId();
         String key = String.format(SeckillRedisKey.KEY_BLACKLIST, userId);
         if (Boolean.TRUE.equals(redisService.hasKey(key))) {
             throw new BizException(SeckillResultEnum.BLACKLISTED);
@@ -117,22 +124,32 @@ public class CheckService {
     }
 
     /**
-     * 限购检查（Redis 计数只读否决）
+     * 活动限购检查（活动维度每人合计限量；Redis 计数只读否决）
      *
-     * 限购上限与已购计数均直读 Redis 独立键（校验数据不吃展示缓存窗口）；
-     * 已达限购直接拒绝；计数含在途延迟（排队中的消息尚未扣减），并发下可能漏放，
+     * 上限直读活动 Hash 的 field（一 field 一条，无需独立键）；miss/坏数据按不限购宽容，
+     * 活动有效性由 checkActivity 把关；计数含在途延迟（排队中的消息尚未扣减），
      * 真实扣减以 processor 的 Lua 原子判定为准。
      */
-    public void checkPurchaseLimit(String activityNo, String skuNo, String userId, int quantity) {
-        String quota = redisService.get(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, skuNo));
-        int purchaseLimit = quota == null ? 0 : Integer.parseInt(quota);
-        if (purchaseLimit <= 0) {
-            return;
+    public void checkActivityPurchaseLimit(String activityNo, int quantity) {
+        String userId = UserContext.currentUserId();
+        // 该活动每人合计限量（0=不限购）——读活动 Hash field
+        int activityLimit = 0;
+        try {
+            String activityJson = redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo);
+            if (activityJson != null) {
+                ActivityDTO dto = objectMapper.readValue(activityJson, ActivityDTO.class);
+                activityLimit = dto.getPurchaseLimit() == null ? 0 : dto.getPurchaseLimit();
+            }
+        } catch (Exception e) {
+            log.warn("活动级限购读取失败（按不限购处理）: activityNo={}", activityNo, e);
         }
-        String used = redisService.get(String.format(SeckillRedisKey.KEY_PURCHASE_LIMIT, activityNo, skuNo, userId));
-        int current = used == null ? 0 : Integer.parseInt(used);
-        if (current + quantity > purchaseLimit) {
-            throw new BizException(SeckillResultEnum.PURCHASE_LIMITED);
+        if (activityLimit > 0) {
+            String activityUsed = redisService.get(
+                    String.format(SeckillRedisKey.KEY_ACTIVITY_PURCHASE_LIMIT, activityNo, userId));
+            int activityCurrent = activityUsed == null ? 0 : Integer.parseInt(activityUsed);
+            if (activityCurrent + quantity > activityLimit) {
+                throw new BizException(SeckillResultEnum.PURCHASE_LIMITED);
+            }
         }
     }
 
@@ -149,6 +166,27 @@ public class CheckService {
     }
 
     /**
+     * SKU 限购检查（该活动该 SKU 限量；Redis 计数只读否决）
+     *
+     * 上限与已购计数直读 Redis 独立键（校验数据不吃展示缓存窗口）；
+     * 计数含在途延迟（排队中的消息尚未扣减），并发下可能漏放，
+     * 真实扣减以 processor 的 Lua 原子判定为准。
+     */
+    public void checkSkuPurchaseLimit(String activityNo, String skuNo, int quantity) {
+        String userId = UserContext.currentUserId();
+        String quota = redisService.get(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, skuNo));
+        int purchaseLimit = quota == null ? 0 : Integer.parseInt(quota);
+        if (purchaseLimit <= 0) {
+            return;
+        }
+        String used = redisService.get(String.format(SeckillRedisKey.KEY_PURCHASE_LIMIT, activityNo, skuNo, userId));
+        int current = used == null ? 0 : Integer.parseInt(used);
+        if (current + quantity > purchaseLimit) {
+            throw new BizException(SeckillResultEnum.PURCHASE_LIMITED);
+        }
+    }
+
+    /**
      * 库存检查（Redis 键只读否决，直读不经缓存）
      *
      * 真实扣减以 processor 的 Lua 原子扣减为准。
@@ -161,19 +199,4 @@ public class CheckService {
         }
     }
 
-    /**
-     * 直读活动信息（Redis hash：field=activityNo）：读不到 / 解析失败均返回 null（按不可用处理）
-     */
-    private ActivityDTO readActivity(String activityNo) {
-        String json = redisService.hGet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo);
-        if (json == null) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(json, ActivityDTO.class);
-        } catch (Exception e) {
-            log.error("活动信息解析失败: activityNo={}", activityNo, e);
-            return null;
-        }
-    }
 }

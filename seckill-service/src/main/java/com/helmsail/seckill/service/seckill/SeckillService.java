@@ -52,12 +52,13 @@ public class SeckillService {
             throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(), "请求缺失链路标识 traceId");
         }
 
-        // 六项准入检查按序收缩，任一失败即在 CheckService 内抛对应业务码
-        checkService.checkRateLimit(userId);
-        checkService.checkActivity(activityNo, userId);
-        checkService.checkBlacklist(userId);
-        checkService.checkPurchaseLimit(activityNo, skuNo, userId, request.getQuantity());
+        // 七项准入检查按序收缩（用户 → 活动 → SKU 逐层），任一失败即在 CheckService 内抛对应业务码
+        checkService.checkRateLimit();
+        checkService.checkActivity(activityNo);
+        checkService.checkBlacklist();
+        checkService.checkActivityPurchaseLimit(activityNo, request.getQuantity());
         checkService.checkSkuOnShelf(activityNo, skuNo);
+        checkService.checkSkuPurchaseLimit(activityNo, skuNo, request.getQuantity());
         checkService.checkStock(activityNo, skuNo, request.getQuantity());
 
         request.setUserId(userId);
@@ -82,6 +83,20 @@ public class SeckillService {
         return traceId;
     }
 
+    public SeckillResultVO pollResult(String traceId) {
+        String resultKey = String.format(SeckillRedisKey.KEY_SECKILL_RESULT, traceId);
+        String json = redisService.get(resultKey);
+        if (json == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, SeckillResultVO.class);
+        } catch (Exception e) {
+            log.error("秒杀结果解析失败: traceId={}", traceId, e);
+            return null;
+        }
+    }
+
     /**
      * 发送异常兜底：best-effort 写 FAILED 结果键
      *
@@ -98,20 +113,6 @@ public class SeckillService {
                     FINAL_TTL_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.error("发送异常兜底写结果键失败: traceId={}", traceId, e);
-        }
-    }
-
-    public SeckillResultVO pollResult(String traceId) {
-        String resultKey = String.format(SeckillRedisKey.KEY_SECKILL_RESULT, traceId);
-        String json = redisService.get(resultKey);
-        if (json == null) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(json, SeckillResultVO.class);
-        } catch (Exception e) {
-            log.error("秒杀结果解析失败: traceId={}", traceId, e);
-            return null;
         }
     }
 }

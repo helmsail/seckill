@@ -58,6 +58,9 @@ public final class SeckillRedisKey {
     /** 用户级限购计数（参与实例三方状态：该活动该 SKU 该用户；标识：activityNo, skuNo, userId） */
     public static final String KEY_PURCHASE_LIMIT = "seckill:activity:%s:sku:%s:purchase:%s";
 
+    /** 用户级活动限购计数（活动维度合计：该活动该用户已购总量；标识：activityNo, userId） */
+    public static final String KEY_ACTIVITY_PURCHASE_LIMIT = "seckill:activity:%s:purchase:%s";
+
     /** 用户黑名单（用户属性；标识：userId） */
     public static final String KEY_BLACKLIST = "seckill:user:%s:blacklist";
 
@@ -73,6 +76,9 @@ public final class SeckillRedisKey {
 
     /** 限购扣减标记（流程根；标识：traceId；value=已扣数量，存在即视为本请求已扣减，重放跳过） */
     public static final String KEY_DEDUCT_LIMIT = "seckill:deduct:limit:%s";
+
+    /** 活动级限购扣减标记（流程根；标识：traceId；同 KEY_DEDUCT_LIMIT，用于活动维度合计计数） */
+    public static final String KEY_DEDUCT_ACTIVITY_LIMIT = "seckill:deduct:activity-limit:%s";
 
     // ========== 支付（二维码缓存 / 回调锁） ==========
 

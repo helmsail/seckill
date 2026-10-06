@@ -28,9 +28,9 @@ public class SeckillConfig {
     public static class Blacklist {
         /** 黑名单有效期（秒）：默认 24 小时，到期自动解除（取正值，避免误伤用户永久失格） */
         private int expireSeconds = 24 * 60 * 60;
-        /** 抢跑窗口起点：开始前多少秒起视为脚本提前抢购（默认 30 分钟） */
+        /** 拉黑窗口起点：开始前多少秒起视为脚本提前抢购（默认 30 分钟，覆盖预热期） */
         private int windowFromSeconds = 30 * 60;
-        /** 抢跑窗口终点：距开始不足多少秒起不再拉黑（默认 2 分钟，避免误伤正常用户） */
-        private int windowToSeconds = 2 * 60;
+        /** 开放边界：开始前多少秒起放行（默认 3 秒，接住准点请求的时钟抖动与网络延迟） */
+        private int windowToSeconds = 3;
     }
 }

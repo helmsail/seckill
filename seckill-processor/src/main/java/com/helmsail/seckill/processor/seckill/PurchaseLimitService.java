@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * 限购额度扣减（Redis 原子操作）
+ * 限购额度扣减（Redis 原子操作；双层：活动级合计 / SKU 级）
  *
  * 扣减与 traceId 幂等标记同脚本原子写入：MQ 重投重放时跳过重复扣减（返回"已扣"视为成功）；
  * 回补为标记守卫的原子操作，回补失败仅记日志（需人工核对）。
@@ -45,6 +45,43 @@ public class PurchaseLimitService {
                 String.valueOf(PURCHASE_KEY_TTL_SECONDS), String.valueOf(DEDUCT_MARK_TTL_SECONDS));
         // 1=本次扣减成功；2=标记已存在（重投重放，视为已扣）；0=超过限购
         return result != null && result > 0;
+    }
+
+    /**
+     * 扣减活动级限购额度（活动维度每人合计；原子操作，含 traceId 幂等标记）
+     *
+     * @return true 表示扣减成立（不限购/本次扣减成功/本请求此前已扣减）；false 表示超过活动限购
+     */
+    public boolean deductActivity(String activityNo, String userId, int activityLimit,
+                                  int quantity, String traceId) {
+        if (activityLimit <= 0) {
+            // 不限购：不扣减、不写标记（回补侧以标记缺席自动跳过）
+            return true;
+        }
+        String counterKey = String.format(SeckillRedisKey.KEY_ACTIVITY_PURCHASE_LIMIT, activityNo, userId);
+        String markKey = String.format(SeckillRedisKey.KEY_DEDUCT_ACTIVITY_LIMIT, traceId);
+        Long result = redisService.executeLua(DEDUCT_LUA, List.of(counterKey, markKey),
+                String.valueOf(activityLimit), String.valueOf(quantity),
+                String.valueOf(PURCHASE_KEY_TTL_SECONDS), String.valueOf(DEDUCT_MARK_TTL_SECONDS));
+        // 1=本次扣减成功；2=标记已存在（重投重放，视为已扣）；0=超过活动限购
+        return result != null && result > 0;
+    }
+
+    /**
+     * 恢复活动级限购额度（标记守卫原子操作：标记存在才减回并删标记，重复执行无副作用）
+     *
+     * 不抛出异常：恢复失败仅记日志（需人工核对），调用方按完成处理。
+     */
+    public void restoreActivity(String activityNo, String userId, int quantity, String traceId) {
+        try {
+            String counterKey = String.format(SeckillRedisKey.KEY_ACTIVITY_PURCHASE_LIMIT, activityNo, userId);
+            String markKey = String.format(SeckillRedisKey.KEY_DEDUCT_ACTIVITY_LIMIT, traceId);
+            redisService.executeLua(RESTORE_LUA, List.of(counterKey, markKey),
+                    String.valueOf(quantity), String.valueOf(PURCHASE_KEY_TTL_SECONDS));
+        } catch (Exception e) {
+            log.error("恢复活动限购失败，需人工核对: activityNo={}, userId={}, quantity={}, traceId={}",
+                    activityNo, userId, quantity, traceId, e);
+        }
     }
 
     /**
