@@ -69,16 +69,12 @@ public final class SeckillRedisKey {
     /** 秒杀结果（流程根；标识：traceId） */
     public static final String KEY_SECKILL_RESULT = "seckill:result:%s";
 
-    // ========== 消费幂等标记（重投重放的扣减去重依据：deduct 原子写入，回滚/终局处理后清理，TTL 24h） ==========
+    // ========== 扣减借据（去重依据 + 回补对账单：deduct 原子写入，回补后删键，TTL 24h） ==========
 
-    /** 库存扣减标记（流程根；标识：traceId；value=已扣数量，存在即视为本请求已扣减，重放跳过） */
-    public static final String KEY_DEDUCT_STOCK = "seckill:deduct:stock:%s";
-
-    /** 限购扣减标记（流程根；标识：traceId；value=已扣数量，存在即视为本请求已扣减，重放跳过） */
-    public static final String KEY_DEDUCT_LIMIT = "seckill:deduct:limit:%s";
-
-    /** 活动级限购扣减标记（流程根；标识：traceId；同 KEY_DEDUCT_LIMIT，用于活动维度合计计数） */
-    public static final String KEY_DEDUCT_ACTIVITY_LIMIT = "seckill:deduct:activity-limit:%s";
+    /** 扣减借据（流程根；标识：traceId；String——键存在即本请求已扣减（重放跳过）；value=已扣数量。
+         回补销账：凭"计数键存在"判断该层本次是否借过，最后删键。
+         不变量：限购层才创建计数键、且限购配置不可变——否则回补会误减历史计数） */
+    public static final String KEY_DEDUCT_RECEIPT = "seckill:deduct:receipt:%s";
 
     // ========== 支付（二维码缓存 / 回调锁） ==========
 

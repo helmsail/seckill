@@ -45,26 +45,15 @@ public class CloseOrderResendJobHandler {
         }
         int sent = 0;
         for (String orderNo : orderNos) {
-            if (resendCloseMessage(orderNo)) {
+            // 补发立即关单消息（traceId 透传）；失败仅记日志：订单仍未关闭，下一轮扫描会再次捞起（任务自身即重试器）
+            try {
+                Message<String> message = BaggageUtils.buildMessage(orderNo);
+                rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message);
                 sent++;
+            } catch (Exception e) {
+                log.error("补发关单消息失败: orderNo={}", orderNo, e);
             }
         }
         log.info("关单补发任务完成: 扫描={}, 补发={}", orderNos.size(), sent);
-    }
-
-    /**
-     * 补发立即关单消息（携带链路信息，traceId 透传至关单消费链路）
-     *
-     * 失败仅记日志：订单仍未关闭，下一轮扫描会再次捞起（任务自身即重试器）。
-     */
-    private boolean resendCloseMessage(String orderNo) {
-        try {
-            Message<String> message = BaggageUtils.buildMessage(orderNo);
-            rocketMQTemplate.syncSend(MqTopic.SECKILL_CLOSE_ORDER, message);
-            return true;
-        } catch (Exception e) {
-            log.error("补发关单消息失败: orderNo={}", orderNo, e);
-            return false;
-        }
     }
 }
