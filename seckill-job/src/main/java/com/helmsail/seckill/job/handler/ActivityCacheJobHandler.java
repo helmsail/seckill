@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
  *    - 全体 SKU 处理完毕后整体化为 JSON 写入快照键——运行态字段已就地剔除，快照只留静态目录（免得旧值混淆）。
  *
  * 库存仅在本任务“待开始”分支被写入，其余任何分支与状态永不触碰库存键——
- * 运行期实时值只被扣减/回补修改；活动终态清理见 StockCleanupJobHandler（壳子，待实现）。
+ * 运行期实时值只被扣减/回补修改；活动终态结余归还见 StockCleanupJobHandler（GETDEL 取走 → 归还主域）。
  * TTL 政策（三态内每轮续期，关闭后自然回收）：快照/上下架 7 天、限购上限 30 天（淘汰方向为“放宽”，须留停摆余量）；
  * 库存键无 TTL（缺失=全拒且无补充机制，绝不淘汰）；活动 Hash field 无法按 field 过期，由 ActivityInfoCleanupJobHandler 清理。
  * 正确性兜底：缓存残留/缺失均由 processor 的 DB 终判收口（状态流转见 ActivityStatusJobHandler，仅操作 DB 不碰缓存）。

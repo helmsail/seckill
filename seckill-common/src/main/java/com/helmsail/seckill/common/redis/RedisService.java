@@ -36,6 +36,15 @@ public class RedisService {
         return redisTemplate.opsForValue().multiGet(keys);
     }
 
+    /**
+     * 原子读取并删除（GETDEL，Redis 6.2+）
+     *
+     * 语义：值恰被取走一次——取走方不再重复读到，迟到写入将重建为新键待下一轮处理
+     */
+    public String getAndDelete(String key) {
+        return redisTemplate.opsForValue().getAndDelete(key);
+    }
+
     public Boolean delete(String key) {
         return redisTemplate.delete(key);
     }
