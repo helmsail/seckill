@@ -189,6 +189,8 @@ services:
         condition: service_started
     ports:
       - "${JOB_PORT}:${JOB_PORT}"
+      # xxl 执行器回调端口（执行器注册地址 = 宿主 IP，admin → 宿主端口 → 本容器，与云端同形态）
+      - "${XXL_EXECUTOR_PORT}:${XXL_EXECUTOR_PORT}"
 
   seckill-service:
     build: ./seckill-service
