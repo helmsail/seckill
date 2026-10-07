@@ -3,7 +3,7 @@
 # ========== 前置步骤 ==========
 #   1. mvn package -DskipTests                 （生成各服务可执行 jar）
 #   2. cp .env.example .env                    （按需修改密码等变量）
-#   3. docker compose up -d --build            （首次启动自动初始化 MySQL：建库建表 + xxl-job 表结构与任务预置，见 docker/mysql/initdb/）
+#   3. docker compose up -d --build            （首次启动自动初始化 MySQL：建库建表 + xxl-job 表结构与任务预置，见 deploy/initdb/）
 #
 # ========== 端口（宿主）==========
 #   gateway 18080 | base 18081 | admin 18082 | job 18083 | service 18084 | processor 18085 | support 18086 | web 18087
@@ -30,8 +30,8 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      # 首次初始化（数据目录为空时执行）：initdb 目录统一维护（建库建表 + xxl-job 初始化，按字母序执行）
-      - ./docker/mysql/initdb:/docker-entrypoint-initdb.d:ro
+      # 首次初始化（数据目录为空时执行）：唯一来源 deploy/initdb（建库建表 + xxl-job 初始化，按字母序执行）
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD" ]
       interval: 5s

@@ -1,0 +1,92 @@
+# 秒杀系统 · 服务器部署拆分（M1 基础设施节点 · 4C8G）——RocketMQ(broker+namesrv) + Nacos + Sentinel + job
+#
+# 【N 拓扑说明】13 台实测收敛版（按比例激进合并）：
+#   - 消息(2.0 核) + 注册中心(1.0) + 路由元数据(0.2) + 限流看板(0.3) + job执行器(0.5) 合一台（@5000 极限 ~90% / @4000 生产档 72%）：
+#     都是"基础设施型"低频组件，业务请求不经过（Nacos 靠客户端缓存+长连接推送，MQ 走长连接）；
+#   - 5 个 JVM 混部：每个堆都必须显式限制（🔴 不限制会各按宿主机比例开堆互相挤爆）；
+#   - broker 启动时把 .env 的 HOST_IP 注入 broker.conf（brokerIP1=本机宿主 IP，跨机应用按此连接）。
+#
+# 启动：docker compose -f docker-compose.infra.yml up -d
+# 更新：docker compose -f docker-compose.infra.yml pull && docker compose -f docker-compose.infra.yml up -d
+name: seckill-infra
+
+services:
+
+  rocketmq-namesrv:
+    image: ${IMAGE_REGISTRY}/seckill-rocketmq:${IMAGE_TAG}
+    container_name: seckill-rocketmq-namesrv
+    cpus: 0.3
+    restart: unless-stopped
+    command: sh mqnamesrv
+    environment:
+      # 堆（默认值；可设 NAMESRV_JAVA_OPT_EXT 覆盖）
+      JAVA_OPT_EXT: "${NAMESRV_JAVA_OPT_EXT:--Xms256m -Xmx256m}"
+    ports:
+      - "9876:9876"
+
+  rocketmq-broker:
+    image: ${IMAGE_REGISTRY}/seckill-rocketmq:${IMAGE_TAG}
+    container_name: seckill-rocketmq-broker
+    cpus: 1.8
+    restart: unless-stopped
+    # 启动时把 .env 的 HOST_IP 注入 broker.conf（brokerIP1=宿主 IP，跨机应用按此连接）
+    command: sh -c "sed 's/__HOST_IP__/${HOST_IP}/' /conf-template/broker.conf > /tmp/broker.conf && sh mqbroker -c /tmp/broker.conf"
+    depends_on:
+      - rocketmq-namesrv
+    environment:
+      # 显式限制堆（RocketMQ 脚本默认按物理内存比例分配；默认值可设 BROKER_JAVA_OPT_EXT 覆盖）
+      JAVA_OPT_EXT: "${BROKER_JAVA_OPT_EXT:--Xms1g -Xmx1g}"
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      # broker.conf 随部署包分发（模板 readonly；启动时注入宿主 IP 到容器内 /tmp）
+      - ./broker.conf:/conf-template/broker.conf:ro
+
+  nacos:
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/nacos:v2.3.2
+    container_name: seckill-nacos
+    cpus: 0.6
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "true"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE}
+      # 堆（默认值；可设 NACOS_JVM_XMS / NACOS_JVM_XMX 覆盖）
+      JVM_XMS: ${NACOS_JVM_XMS:-256m}
+      JVM_XMX: ${NACOS_JVM_XMX:-512m}
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+
+  sentinel-dashboard:
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/sentinel-dashboard:1.8.8
+    container_name: seckill-sentinel-dashboard
+    cpus: 0.3
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # 堆（默认值可设 SENTINEL_JAVA_OPTS 覆盖）；端口三处同源（.env ④ SENTINEL_PORT；改后同步 ① SENTINEL_DASHBOARD_ADDR）
+      JAVA_OPTS: "${SENTINEL_JAVA_OPTS:--Xmx512m} -Dserver.port=${SENTINEL_PORT:-8858} -Dcsp.sentinel.dashboard.server=localhost:${SENTINEL_PORT:-8858} -Dproject.name=sentinel-dashboard"
+    ports:
+      - "${SENTINEL_PORT:-8858}:${SENTINEL_PORT:-8858}"
+
+  seckill-job:
+    image: ${IMAGE_REGISTRY}/seckill-job:${IMAGE_TAG}
+    container_name: seckill-job
+    cpus: 0.6
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 堆（默认值；要调整在 .env ⑤ 区设 JOB_JAVA_OPTS 覆盖）；
+      # -Dxxl.job.executor.address=宿主内网 IP（2.4+ 以 address 为准）：不配会自报容器内网 IP，跨机回调（xxl-admin 在 P2）不通
+      JAVA_TOOL_OPTIONS: "${JOB_JAVA_OPTS:--Xms1g -Xmx1g} -Dxxl.job.executor.address=http://${HOST_IP}:${XXL_EXECUTOR_PORT}/"
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${JOB_PORT}:${JOB_PORT}"
+      # 执行器回调端口（xxl-job-admin 在 P2 台，触发任务用）
+      - "${XXL_EXECUTOR_PORT}:${XXL_EXECUTOR_PORT}"

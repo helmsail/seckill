@@ -5,7 +5,7 @@
  *          （等出单 → 预支付 → 模拟回调）→ 抽样终态轮询。
  *
  * ── 配置（只 4 项，都在 deploy/.env 的"压测 k6"段维护）──────────────
- *   BASE_URL       压测目标（本地联调 http://localhost:18080；服务器 http://<台8 IP>:18080）
+ *   BASE_URL       压测目标（本地联调 http://localhost:18080；服务器 http://<D2 web IP>:18087 经 nginx 分摊；单网关直连 http://<Gx IP>:18080）
  *   SECKILL_RATE   每秒秒杀提交数
  *   DURATION       压测时长
  *   PAY_RATIO      秒杀成功后按比例模拟支付（0=关，1=全付）
@@ -89,13 +89,14 @@ const BASE_URL = cfg('BASE_URL', 'http://localhost:18080');
 const SECKILL_RATE = cfgNum('SECKILL_RATE', 500);
 const DURATION = cfg('DURATION', '3m');
 const PAY_RATIO = Math.max(0, Math.min(1, cfgNum('PAY_RATIO', 0.2))); // 0=不支付，1=全支付
+const PRE_VUS = cfgNum('PRE_VUS', 5000); // 预分配 VU：服务器 5000；本地联调（内存有限）调小如 800
 
 // ---- 内置默认（种子环境专用，一般不改）----
 const ACTIVITY_NO = 'LT-LOADTEST-001';
 const USER_COUNT = 80000;
 const USER_PREFIX = 'lt';
 const USER_PASSWORD = '123456';
-const BROWSE_RATE = 0; // 混合读流量（列表/商品/库存）；需要时改此值
+const BROWSE_RATE = cfgNum('BROWSE_RATE', 0); // 混合读流量（列表/商品/库存）；-e BROWSE_RATE=300 开启
 
 // 就绪探测与运行节奏
 const READY_TIMEOUT_MS = 20 * 60 * 1000; // 就绪等待上限
@@ -153,7 +154,7 @@ export const options = {
       rate: SECKILL_RATE,
       timeUnit: '1s',
       duration: DURATION,
-      preAllocatedVUs: 5000, // 服务器压测值（3000/s 实测需 ~4500+ VU）；本地联调（内存有限）时手动改小为 500
+      preAllocatedVUs: PRE_VUS, // 服务器压测值（3000/s 实测需 ~4500+ VU）；本地联调用 -e PRE_VUS=800 调小
       maxVUs: USER_COUNT, // 与账号 1:1，用户不重复
     },
     // 混合读流量（BROWSE_RATE=0 时自动禁用）

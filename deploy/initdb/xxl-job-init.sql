@@ -1,7 +1,7 @@
 -- ============================================================
 -- xxl-job 业务调度规则（★ 日常唯一需要维护的 xxl-job 文件）
 --
--- 内容：执行器组 seckill-job + 4 个任务。每行一条规则：
+-- 内容：执行器组 seckill-job + 6 个任务。每行一条规则：
 --       job_desc（说明）/ handler（必须与代码 @XxlJob("...") 逐字一致）/ cron。
 -- 修改：调整周期 = 改对应行的 cron；新增任务 = 追加一行 SELECT。
 --       handler 改错的任务在 admin 里会报 "job handler not found"。
@@ -34,6 +34,8 @@ JOIN (
     UNION ALL SELECT '活动缓存同步：信息快照、预热与运行期投影', 'activityCacheJob', '0 * * * * ?'
     UNION ALL SELECT '订单关单补发：兜底延迟消息失效', 'closeOrderResendJob', '0 * * * * ?'
     UNION ALL SELECT '订单同步补发：兜底主域漏账', 'orderSyncResendJob', '0 * * * * ?'
+    UNION ALL SELECT '活动终态清理：信息 field 回收', 'activityInfoCleanupJob', '0 * * * * ?'
+    UNION ALL SELECT '活动终态清理：库存结余归还主域', 'stockCleanupJob', '0 * * * * ?'
 ) t ON 1 = 1
 WHERE g.`app_name` = 'seckill-job'
   AND NOT EXISTS (SELECT 1 FROM `xxl_job_info` i WHERE i.`executor_handler` = t.`handler`);

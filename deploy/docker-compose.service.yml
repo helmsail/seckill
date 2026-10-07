@@ -1,4 +1,9 @@
-# 秒杀系统 · 服务器部署拆分（台 2~4，三台各起一份）——service
+# 秒杀系统 · 服务器部署拆分（S1~S3 业务服务节点 · 4C8G ×3，每台各起一份）——service
+#
+# 【N 拓扑说明】按本地实测比例收敛（service≈24%，吞吐大头）：~9.3 核 @5000 极限，拆 3 个实例
+# （@4000 生产档每台 62%），任一实例故障仅损失 1/3 容量，扩容即加机器复制本文件；
+#   - web（nginx，D1 台）→ G1~G2 网关 → 经 Nacos 服务发现按
+#     SPRING_CLOUD_NACOS_DISCOVERY_IP 负载均衡到 3 个 service 实例。
 #
 # 启动（每台各执行）：docker compose -f docker-compose.service.yml up -d        （镜像从 .env 的 IMAGE_REGISTRY 拉取）
 # 更新：docker compose -f docker-compose.service.yml pull && docker compose -f docker-compose.service.yml up -d
@@ -14,7 +19,7 @@ services:
   seckill-service:
     image: ${IMAGE_REGISTRY}/seckill-service:${IMAGE_TAG}
     container_name: seckill-service
-    cpus: 4
+    cpus: 3.5
     restart: unless-stopped
     env_file: .env
     environment:

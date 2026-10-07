@@ -1,0 +1,27 @@
+# 秒杀系统 · 服务器部署拆分（B1~B3 业务核心节点 · 4C8G ×3，每台各起一份）——base
+#
+# 【N 拓扑说明】按本地实测比例收敛（base≈22%，两轮实测中占比最高的业务模块之一）：
+#   ~8.6 核 @5000 极限，拆 3 个实例（@4000 生产档每台 57%）；
+#   - base 无定时任务/本地单例状态，多实例安全：service/processor/support 经 Dubbo 负载均衡调用；
+#   - 本文件每台执行一份，三台都注册到出口 IP（DUBBO_IP_TO_REGISTRY 见 environment）。
+#
+# 启动（每台各执行）：docker compose -f docker-compose.base.yml up -d
+# 更新：docker compose -f docker-compose.base.yml pull && docker compose -f docker-compose.base.yml up -d
+name: seckill-base
+
+services:
+
+  seckill-base:
+    image: ${IMAGE_REGISTRY}/seckill-base:${IMAGE_TAG}
+    container_name: seckill-base
+    cpus: 3.5
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 堆（默认值；要调整在 .env ⑤ 区设 BASE_JAVA_OPTS 覆盖）
+      JAVA_TOOL_OPTIONS: "${BASE_JAVA_OPTS:--Xms3g -Xmx3g}"
+      # 跨机 Dubbo 调用不能注册容器内网 IP（注册宿主内网 IP + 端口映射见 ports）
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${BASE_SERVER_PORT}:${BASE_SERVER_PORT}"
+      - "${BASE_DUBBO_PORT}:${BASE_DUBBO_PORT}"

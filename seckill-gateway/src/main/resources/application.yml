@@ -14,7 +14,16 @@ spring:
       server:
         webflux:
           routes:
-            # C 端服务
+            # C 端读流量（轮询/查询：结果键轮询、订单状态轮询、活动/商品/库存浏览）
+            # ⚠️ 必须声明在下方“C 端交易”之前——Path 谓词按声明顺序首个命中生效
+            - id: seckill-service-read
+              uri: lb://seckill-service
+              predicates:
+                - Path=/api/c/seckill/poll,/api/c/order/**,/api/c/activity/**
+              filters:
+                - StripPrefix=2
+
+            # C 端交易（秒杀提交、支付、登录）
             - id: seckill-service
               uri: lb://seckill-service
               predicates:
@@ -48,7 +57,7 @@ spring:
         dashboard: ${SENTINEL_DASHBOARD_ADDR}
       datasource:
         # 动态规则通道（当前未在 Nacos 维护数据）：namespace=seckill-sentinel，dataId=seckill-gateway-gw-flow.json，group=SENTINEL_GROUP
-        # Nacos 未配置或拉取失败时，由 GatewayRuleInitializer 装载兜底规则（C 端 3500 / 运营端 500 QPS），限流不失效
+        # Nacos 未配置或拉取失败时，由 GatewayRuleInitializer 装载兜底规则（阈值见下方 gateway.ratelimit.qps），限流不失效
         gw-flow:
           nacos:
             server-addr: ${NACOS_ADDR}
@@ -59,6 +68,17 @@ spring:
             group-id: SENTINEL_GROUP
             data-type: json
             rule-type: gw-flow
+
+# ---------- 网关限流阈值（兜底规则唯一来源；环境变量优先，未设时用冒号后默认值）----------
+# 口径说明：Sentinel 按实例独立计数，此阈值 = 本实例承载上限
+#   - 单实例（本地）：交易 6000 / 读 12000 / 运营端 500 = 总目标口径；
+#   - 多实例（云端 G1~G3 三实例）：每实例 = 总目标 ÷ 实例数 → 交易 2000 / 读 4000 / 运营端 500（由 .env 注入 GATEWAY_QPS_*）。
+gateway:
+  ratelimit:
+    qps:
+      admin: ${GATEWAY_QPS_ADMIN:500}
+      service: ${GATEWAY_QPS_SERVICE:6000}
+      service-read: ${GATEWAY_QPS_READ:12000}
 
 # ---------- JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）----------
 jwt:

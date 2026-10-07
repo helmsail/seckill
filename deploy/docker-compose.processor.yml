@@ -1,0 +1,47 @@
+# 秒杀系统 · 服务器部署拆分（P1~P2 消费节点 · 4C8G ×2）——processor（P2 台附 XXL-Job）
+#
+# 【N 拓扑说明】13 台合并版 · 4000 QPS 生产档：
+#   - processor 拆 2 实例（@4000：52% / 66%，P2 因含 xxl）；RocketMQ 同消费组按队列自动分片；
+#   - ⚠️ xxl-job-admin 只在 P2 台启动（双实例对同一调度库会重复调度，切忌两台都起）：
+#       P1 台：docker compose -f docker-compose.processor.yml up -d seckill-processor
+#       P2 台：docker compose -f docker-compose.processor.yml up -d        ← 含 xxl-job-admin
+#   - 独立整机（不与其他业务 JVM 混部）：消费线程不受邻居 GC 干扰，也不与 broker 抢 CPU。
+#
+# 更新（两台相同命令）：docker compose -f docker-compose.processor.yml pull && docker compose -f docker-compose.processor.yml up -d
+name: seckill-processor
+
+services:
+
+  seckill-processor:
+    image: ${IMAGE_REGISTRY}/seckill-processor:${IMAGE_TAG}
+    container_name: seckill-processor
+    cpus: 3
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 堆（默认值；要调整在 .env ⑤ 区设 PROCESSOR_JAVA_OPTS 覆盖）
+      JAVA_TOOL_OPTIONS: "${PROCESSOR_JAVA_OPTS:--Xms2560m -Xmx2560m}"
+      # 跨机 Dubbo 调用不能注册容器内网 IP
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${PROCESSOR_PORT}:${PROCESSOR_PORT}"
+
+  xxl-job-admin:
+    # 官方镜像经 ACR 中转（服务器直连 Docker Hub 不稳定）
+    image: ${IMAGE_REGISTRY}/xxl-job-admin:2.5.0
+    container_name: seckill-xxl-job-admin
+    cpus: 0.7
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # 堆（默认值；可设 XXL_JAVA_OPTS 覆盖）
+      JAVA_OPTS: "${XXL_JAVA_OPTS:--Xmx1g}"
+      # 调度库在 D1 数据库节点（跨机用内网 IP；未导入 xxl_job 表前会反复重启，导入后自动恢复）
+      PARAMS: >-
+        --spring.datasource.url=jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:-3306}/xxl_job?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+        --spring.datasource.username=${MYSQL_USERNAME:-root}
+        --spring.datasource.password=${MYSQL_PASSWORD:-root}
+        --xxl.job.accessToken=
+    ports:
+      # 宿主端口可改（.env ④ XXL_ADMIN_PORT；改后同步 ① XXL_ADMIN_ADDR）
+      - "${XXL_ADMIN_PORT:-8080}:8080"

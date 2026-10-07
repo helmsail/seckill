@@ -1,0 +1,60 @@
+# 秒杀系统 · 服务器部署拆分（D1 数据库与前端节点 · 4C8G）——MySQL + admin + web（nginx）
+#
+# 【N 拓扑说明】13 台实测收敛版（按比例激进合并）：
+#   - MySQL（~2.8 核）+ admin（~0.5 核）+ web/nginx（~0.3 核）合一台（@5000 极限 ~90% / @4000 生产档 72%）；
+#   - web 通过同目录 nginx.conf 挂载覆盖镜像配置：upstream 指向 G1~G2 两台网关（部署时填内网 IP）；
+#   - 数据量小，MySQL 参数全用默认（真正要给的只有容器 CPU 配额）。
+#
+# 启动：docker compose -f docker-compose.mysql.yml up -d
+# 更新：docker compose -f docker-compose.mysql.yml down && docker compose -f docker-compose.mysql.yml up -d
+#       ⚠️ down/up = 冷启动 = 数据重置（initdb 重跑，压测种子自动重建）；仅重启用 restart
+name: seckill-mysql
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: seckill-mysql
+    cpus: 3.2
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_DATABASE: seckill
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      # 首次初始化（数据目录为空时执行）：建库建表 + 基础数据 + 压测种子，按字母序执行
+      # deploy/initdb 为本仓库唯一维护点（本地开发 compose 也直接挂载此处，无需同步脚本）
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD" ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  seckill-admin:
+    image: ${IMAGE_REGISTRY}/seckill-admin:${IMAGE_TAG}
+    container_name: seckill-admin
+    cpus: 0.5
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 堆（默认值；要调整在 .env ⑤ 区设 ADMIN_JAVA_OPTS 覆盖）
+      JAVA_TOOL_OPTIONS: "${ADMIN_JAVA_OPTS:--Xms1g -Xmx1g}"
+      SPRING_CLOUD_NACOS_DISCOVERY_IP: ${HOST_IP}
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${ADMIN_PORT}:${ADMIN_PORT}"
+
+  seckill-web:
+    image: ${IMAGE_REGISTRY}/seckill-web:${IMAGE_TAG}
+    container_name: seckill-web
+    cpus: 0.3
+    restart: unless-stopped
+    volumes:
+      # 云端版站点配置（upstream 指向 G1~G2 网关；覆盖镜像内置的单网关版）
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${WEB_PORT}:80"
