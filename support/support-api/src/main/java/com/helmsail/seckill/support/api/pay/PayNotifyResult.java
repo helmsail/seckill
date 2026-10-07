@@ -21,8 +21,8 @@ public class PayNotifyResult implements Serializable {
     /** 交易号（流水号） */
     private String tradeNo;
 
-    /** 交易状态（见 PayTradeStatus） */
-    private String tradeStatus;
+    /** 交易状态 */
+    private PayTradeStatus tradeStatus;
 
     /** 金额（单位：元） */
     private String totalAmount;

@@ -2,6 +2,7 @@ package com.helmsail.seckill.support.server.pay;
 
 import com.helmsail.seckill.support.api.pay.PayChannelType;
 import com.helmsail.seckill.support.api.pay.PayNotifyResult;
+import com.helmsail.seckill.support.api.pay.PayRequest;
 
 import java.util.Map;
 
@@ -20,12 +21,10 @@ public interface PayChannel {
     /**
      * 创建收款二维码
      *
-     * @param subject     商品标题
-     * @param outTradeNo  商户订单号
-     * @param totalAmount 金额（单位：元）
-     * @return 二维码链接
+     * @param request 支付请求（商品标题/商户订单号/金额/支付超时）
+     * @return 二维码内容/链接
      */
-    String preCreate(String subject, String outTradeNo, String totalAmount);
+    String preCreate(PayRequest request);
 
     /**
      * 验签并解析异步通知（仅技术验证，不做业务判断）

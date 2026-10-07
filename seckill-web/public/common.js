@@ -16,9 +16,18 @@ const auth = {
 /** 统一请求：自动附加 token；业务失败抛出带 message 的 Error；登录失效清理登录态 */
 async function api(method, url, body) {
   const headers = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  let encoded = body;
+  if (body !== undefined) {
+    if (body instanceof URLSearchParams) {
+      // 表单形态（模拟第三方异步通知等，与真实渠道 POST form 一致）
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    } else {
+      headers['Content-Type'] = 'application/json';
+      encoded = JSON.stringify(body);
+    }
+  }
   if (auth.token()) headers.Authorization = 'Bearer ' + auth.token();
-  const res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const res = await fetch(url, { method, headers, body: encoded });
   if (res.status === 401 || res.status === 403) {
     auth.clear();
     setTimeout(() => location.reload(), 800); // 回到登录页
@@ -32,6 +41,7 @@ async function api(method, url, body) {
 
 const apiGet = (url) => api('GET', url);
 const apiPost = (url, body) => api('POST', url, body);
+const apiPostForm = (url, params) => api('POST', url, new URLSearchParams(params));
 const apiPut = (url, body) => api('PUT', url, body);
 const apiDel = (url, body) => api('DELETE', url, body);
 

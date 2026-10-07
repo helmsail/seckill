@@ -2,6 +2,7 @@ package com.helmsail.seckill.support.server.pay;
 
 import com.helmsail.seckill.support.api.pay.PayChannelType;
 import com.helmsail.seckill.support.api.pay.PayNotifyResult;
+import com.helmsail.seckill.support.api.pay.PayRequest;
 import com.helmsail.seckill.support.api.pay.PayTradeStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,14 +40,14 @@ public class MockChannel implements PayChannel {
      * 预创建：模拟渠道无真实网关地址，直接返回操作说明（见类注释）
      */
     @Override
-    public String preCreate(String subject, String outTradeNo, String totalAmount) {
+    public String preCreate(PayRequest request) {
         log.info("【模拟支付】预创建（返回操作说明）: outTradeNo={}, subject={}, amount={}",
-                outTradeNo, subject, totalAmount);
+                request.getOutTradeNo(), request.getSubject(), request.getTotalAmount());
         return """
-                【模拟支付说明】本渠道为本地模拟，无需真实扫码，按以下方式操作：
-                1. 模拟支付成功：GET %s?out_trade_no={订单号}&trade_status=PAID&total_amount={金额}
-                   浏览器直接访问即可，订单随即转为已支付；total_amount 须与订单应付金额一致
-                2. 模拟支付失败：无需任何操作，订单保持待支付，超时后自动关闭
+                【模拟支付说明】本渠道为本地模拟，无需真实扫码：由前端"模拟支付成功"按钮扮演第三方发起异步通知（POST form，与真实渠道形态一致）：
+                1. 模拟支付成功：POST %s（form 参数：out_trade_no / trade_status=PAID / total_amount）
+                   total_amount 须与订单应付金额一致，订单随后转为已支付
+                2. 模拟支付失败：不做任何操作，订单保持待支付，超时后自动关闭
                 3. 前端获取最终结果：轮询 GET %s?orderNo={订单号}
                    PENDING 继续轮询 / PAID 跳成功页 / CLOSED 跳失败页\
                 """.formatted(callbackUrl, statusUrl);
@@ -61,7 +62,8 @@ public class MockChannel implements PayChannel {
         result.setValid(true);
         result.setOutTradeNo(params.get("out_trade_no"));
         result.setTradeNo(params.getOrDefault("trade_no", TRADE_NO_PREFIX + params.get("out_trade_no")));
-        result.setTradeStatus(params.getOrDefault("trade_status", PayTradeStatus.PAID));
+        result.setTradeStatus(PayTradeStatus.valueOf(
+                params.getOrDefault("trade_status", PayTradeStatus.PAID.name())));
         result.setTotalAmount(params.get("total_amount"));
         log.info("【模拟支付】验签通过（模拟）: outTradeNo={}, tradeStatus={}",
                 result.getOutTradeNo(), result.getTradeStatus());

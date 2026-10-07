@@ -78,8 +78,8 @@ public final class SeckillRedisKey {
 
     // ========== 支付（二维码缓存 / 回调锁） ==========
 
-    /** 支付二维码缓存（流程根；标识：orderNo） */
-    public static final String KEY_PAY_QRCODE = "seckill:pay:qrcode:%s";
+    /** 支付二维码缓存（流程根；标识：orderNo, channel——同订单各渠道各自缓存） */
+    public static final String KEY_PAY_QRCODE = "seckill:pay:qrcode:%s:%s";
 
     /** 支付回调处理锁（流程根；标识：orderNo） */
     public static final String KEY_PAY_LOCK = "seckill:pay:lock:%s";

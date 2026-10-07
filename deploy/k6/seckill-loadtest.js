@@ -285,20 +285,20 @@ function simulatePay(seckillRes, token, skuNo) {
 
   // 预支付：归属与状态校验 + 渠道预创建（必须是下单人 token）
   const prepay = http.post(
-    `${BASE_URL}/api/c/pay/prepay?orderNo=${encodeURIComponent(orderNo)}`,
+    `${BASE_URL}/api/c/pay/prepay?orderNo=${encodeURIComponent(orderNo)}&channel=mock`,
     null,
     { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'pay_prepay' } }
   );
   const prepayCode = bizCode(prepay);
   payBiz.add(1, { step: 'prepay', code: prepayCode });
 
-  // 模拟支付回调（白名单接口）：带金额触发金额核对；无映射时缺省（服务端跳过核对）
+  // 模拟支付回调（白名单接口，POST form 与真实渠道异步通知形态一致）：带金额触发金额核对；无映射时缺省（服务端跳过核对）
   let callbackCode = 'skipped';
   if (prepayCode === 'success') {
+    const form = { out_trade_no: orderNo, trade_status: 'PAID' };
     const amount = SKU_PRICE_MAP[skuNo];
-    let url = `${BASE_URL}/api/c/pay/callback?out_trade_no=${encodeURIComponent(orderNo)}&trade_status=PAID`;
-    if (amount) url += `&total_amount=${amount}`;
-    callbackCode = bizCode(http.get(url, { tags: { name: 'pay_callback' } }));
+    if (amount) form.total_amount = amount;
+    callbackCode = bizCode(http.post(`${BASE_URL}/api/c/pay/callback/mock`, form, { tags: { name: 'pay_callback' } }));
     payBiz.add(1, { step: 'callback', code: callbackCode });
   }
 

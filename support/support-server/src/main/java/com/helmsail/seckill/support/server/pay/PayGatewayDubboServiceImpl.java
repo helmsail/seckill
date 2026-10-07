@@ -20,8 +20,7 @@ public class PayGatewayDubboServiceImpl implements PayGatewayDubboService {
 
     @Override
     public String preCreate(PayChannelType channel, PayRequest request) {
-        return payChannelFactory.getChannel(channel)
-                .preCreate(request.getSubject(), request.getOutTradeNo(), request.getTotalAmount());
+        return payChannelFactory.getChannel(channel).preCreate(request);
     }
 
     @Override

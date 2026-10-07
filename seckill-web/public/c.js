@@ -181,13 +181,41 @@ function openOrderModal(orderNo, amount) {
 }
 
 async function openPayModal(orderNo, amount) {
-  let note;
+  modal({
+    title: '选择支付方式',
+    body: `
+      <p style="margin-bottom: 12px">订单号：<b>${esc(orderNo)}</b>　应付：<b>¥${money(amount)}</b></p>
+      <div style="display:flex; gap:10px">
+        <button class="btn btn-primary grow" data-channel="mock">模拟支付</button>
+        <button class="btn btn-primary grow" data-channel="alipay">支付宝沙箱</button>
+      </div>`,
+    foot: '<button class="btn" data-close>关闭</button>',
+    onReady(root, close) {
+      root.querySelectorAll('[data-channel]').forEach((btn) => {
+        btn.onclick = () => { close(); startPay(orderNo, amount, btn.dataset.channel); };
+      });
+    },
+  });
+}
+
+/* 预支付（按渠道预创建）后展示对应支付界面 */
+async function startPay(orderNo, amount, channel) {
+  let qrCode;
   try {
-    note = await apiPost('/api/c/pay/prepay?orderNo=' + encodeURIComponent(orderNo));
+    qrCode = await apiPost(`/api/c/pay/prepay?orderNo=${encodeURIComponent(orderNo)}&channel=${channel}`);
   } catch (err) {
     toast(err.message, false);
     return;
   }
+  if (channel === 'alipay') {
+    openAlipayModal(orderNo, amount, qrCode);
+  } else {
+    openMockModal(orderNo, amount, qrCode);
+  }
+}
+
+/* 模拟支付：操作说明 + 一键模拟成功 */
+function openMockModal(orderNo, amount, note) {
   modal({
     title: '模拟支付',
     body: `
@@ -201,7 +229,8 @@ async function openPayModal(orderNo, amount) {
       btn.onclick = async () => {
         btn.disabled = true;
         try {
-          await apiGet(`/api/c/pay/callback?out_trade_no=${encodeURIComponent(orderNo)}&trade_status=PAID&total_amount=${encodeURIComponent(amount)}`);
+          // 模拟第三方异步通知（POST form，与真实渠道形态一致）
+          await apiPostForm('/api/c/pay/callback/mock', { out_trade_no: orderNo, trade_status: 'PAID', total_amount: amount });
           toast('支付成功');
           close();
         } catch (err) {
@@ -211,6 +240,45 @@ async function openPayModal(orderNo, amount) {
       };
     },
   });
+}
+
+/* 支付宝沙箱：打开收银台链接支付 + 轮询订单终态 */
+function openAlipayModal(orderNo, amount, qrCode) {
+  modal({
+    title: '支付宝沙箱支付',
+    body: `
+      <p style="margin-bottom: 10px">订单号：<b>${esc(orderNo)}</b>　应付：<b>¥${money(amount)}</b></p>
+      <p style="text-align:center; margin:14px 0">
+        <a class="btn btn-primary" href="${esc(qrCode)}" target="_blank" rel="noopener">打开沙箱收银台支付</a>
+      </p>
+      <p class="muted">沙箱版支付宝 APP 扫码，或在浏览器打开链接登录沙箱买家完成付款</p>
+      <p id="payStatus" class="muted" style="margin-top:10px; word-break:break-all">等待支付结果…</p>`,
+    foot: '<button class="btn" data-close>关闭</button>',
+    onReady(root, close) {
+      pollOrderResult(orderNo, $('#payStatus', root), close);
+    },
+  });
+}
+
+/* 轮询订单状态直至终态（2s 间隔，最长约 5 分钟） */
+async function pollOrderResult(orderNo, statusEl, close) {
+  for (let i = 0; i < 150; i++) {
+    await sleep(2000);
+    if (!document.body.contains(statusEl)) return; // 弹层已关闭则停止
+    try {
+      const s = await apiGet('/api/c/order/status?orderNo=' + encodeURIComponent(orderNo));
+      if (s.status === 'PAID') {
+        statusEl.textContent = '支付成功';
+        toast('支付成功');
+        close();
+        return;
+      }
+      if (s.status === 'CLOSED') {
+        statusEl.textContent = '订单已关闭（超时未支付）';
+        return;
+      }
+    } catch (err) { /* 瞬时错误忽略，继续轮询 */ }
+  }
 }
 
 function openQueryModal() {

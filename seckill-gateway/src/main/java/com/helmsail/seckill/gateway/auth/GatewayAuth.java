@@ -28,8 +28,8 @@ public final class GatewayAuth {
             "/api/admin/user/login",
             "/api/c/user/login",
             "/api/c/activity/**",
-            // 支付渠道异步通知（由渠道验签守卫，无用户 JWT）
-            "/api/c/pay/callback"
+            // 支付渠道异步通知（由渠道验签守卫，无用户 JWT；路径含渠道段 /callback/{channel}）
+            "/api/c/pay/callback/**"
     );
 
     /** 共享路径匹配器（AntPathMatcher 线程安全，全局单例复用） */

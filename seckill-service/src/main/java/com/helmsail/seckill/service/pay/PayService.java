@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 收银台支付服务（两入口）
  *
- * prePay：待支付订单出二维码（渠道预创建 + 缓存）；
+ * prePay：待支付订单出二维码（渠道预创建 + 按渠道缓存）；
  * payCallback：渠道异步回调——验签核对后锁内完成支付（条件更新 + 清码 + 主域同步），是支付完成的唯一写路径。
  *
  * 订单状态查询见 order 包的 OrderQueryService（纯读，不感知渠道）。
@@ -49,6 +49,9 @@ public class PayService {
 
     /** 二维码缓存有效期（秒） */
     private static final int QR_CODE_CACHE_TTL = 10 * 60;
+
+    /** 支付超时（分钟）：与订单关单延迟（10 分钟）对齐，渠道侧超时后不再允许支付 */
+    private static final int ORDER_PAY_TIMEOUT_MINUTES = 10;
 
     /** 读写混合：paySuccess 写方法级禁重试保持写语义确定；读方法不声明，自动走引用级默认 */
     @DubboReference(methods = @Method(name = "paySuccess", retries = 0))
@@ -64,11 +67,11 @@ public class PayService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 预支付：获取支付二维码
+     * 预支付：获取支付二维码（按渠道分发）
      *
-     * 归属与状态校验先于缓存读取：缓存键不含 userId，命中直达会绕过校验。
+     * 归属与状态校验先于缓存读取：缓存键不含 userId，且按订单+渠道各自缓存（同订单换渠道不复用旧码）。
      */
-    public String prePay(String orderNo) {
+    public String prePay(String orderNo, PayChannelType channel) {
         // 1. 查询订单（不存在由 base 抛 ORDER_NOT_FOUND）
         SeckillOrderDTO order = seckillOrderService.getByOrderNo(orderNo);
 
@@ -83,19 +86,20 @@ public class PayService {
             throw new BizException(SeckillResultEnum.ORDER_STATUS_NOT_ALLOWED);
         }
 
-        // 4. 检查缓存
-        String cacheKey = String.format(SeckillRedisKey.KEY_PAY_QRCODE, orderNo);
+        // 4. 检查缓存（按订单 + 渠道）
+        String cacheKey = String.format(SeckillRedisKey.KEY_PAY_QRCODE, orderNo, channel.getCode());
         String cachedQrCode = redisService.get(cacheKey);
         if (cachedQrCode != null) {
             return cachedQrCode;
         }
 
-        // 5. 调用支付渠道预创建
+        // 5. 调用支付渠道预创建（支付超时与订单关单时间对齐）
         PayRequest payRequest = new PayRequest();
         payRequest.setSubject("秒杀活动订单");
         payRequest.setOutTradeNo(order.getOrderNo());
         payRequest.setTotalAmount(String.valueOf(order.getPayAmount()));
-        String qrCode = payGatewayService.preCreate(PayChannelType.MOCK, payRequest);
+        payRequest.setTimeoutMinutes(ORDER_PAY_TIMEOUT_MINUTES);
+        String qrCode = payGatewayService.preCreate(channel, payRequest);
 
         // 6. 缓存二维码
         redisService.set(cacheKey, qrCode, QR_CODE_CACHE_TTL, TimeUnit.SECONDS);
@@ -110,13 +114,13 @@ public class PayService {
      * 接入真实渠道时替换 PayChannel.verifyNotify 的真实验签即可。
      * 校验链：验签 → 交易状态过滤 → 加锁 → 订单核对（状态分流 + 金额）→ 转 PAID。
      */
-    public void payCallback(Map<String, String> params) {
+    public void payCallback(PayChannelType channel, Map<String, String> params) {
         // 1. 渠道验签 + 解析
-        PayNotifyResult notify = payGatewayService.verifyNotify(PayChannelType.MOCK, params);
+        PayNotifyResult notify = payGatewayService.verifyNotify(channel, params);
         if (notify == null || !notify.isValid()) {
             throw new BizException(ResultEnum.FORBIDDEN.getCode(), "支付回调验签失败");
         }
-        if (!PayTradeStatus.PAID.equals(notify.getTradeStatus())) {
+        if (notify.getTradeStatus() != PayTradeStatus.PAID) {
             log.warn("支付回调非成功状态，忽略: tradeStatus={}", notify.getTradeStatus());
             return;
         }
@@ -159,27 +163,21 @@ public class PayService {
 
             // 3. 支付完成：条件更新（重复/竞态幂等）→ 清二维码缓存 → 同步主域（发送失败不回滚支付，漏同步由对账任务捞回）
             seckillOrderService.paySuccess(order.getOrderNo(), notify.getTradeNo());
-            redisService.delete(String.format(SeckillRedisKey.KEY_PAY_QRCODE, order.getOrderNo()));
-            sendOrderSync(order, notify.getTradeNo());
+            redisService.delete(String.format(SeckillRedisKey.KEY_PAY_QRCODE, order.getOrderNo(), channel.getCode()));
+            // 同步成功订单到主域（MQ）；失败仅记日志：支付事实已成立不回滚，漏同步由对账任务捞回
+            try {
+                SeckillOrderSyncEvent event = new SeckillOrderSyncEvent(
+                        order.getOrderNo(), order.getUserId(), order.getTotalAmount(),
+                        order.getPayAmount(), LocalDateTime.now(), notify.getTradeNo());
+                Message<String> message = BaggageUtils.buildMessage(objectMapper.writeValueAsString(event));
+                rocketMQTemplate.syncSend(MqTopic.ORDER_SYNC, message);
+            } catch (Exception e) {
+                log.error("秒杀订单同步消息发送失败: orderNo={}", order.getOrderNo(), e);
+            }
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
-        }
-    }
-
-    /**
-     * 同步成功订单到主域（MQ）
-     */
-    private void sendOrderSync(SeckillOrderDTO order, String tradeNo) {
-        try {
-            SeckillOrderSyncEvent event = new SeckillOrderSyncEvent(
-                    order.getOrderNo(), order.getUserId(), order.getTotalAmount(),
-                    order.getPayAmount(), LocalDateTime.now(), tradeNo);
-            Message<String> message = BaggageUtils.buildMessage(objectMapper.writeValueAsString(event));
-            rocketMQTemplate.syncSend(MqTopic.ORDER_SYNC, message);
-        } catch (Exception e) {
-            log.error("秒杀订单同步消息发送失败: orderNo={}", order.getOrderNo(), e);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.helmsail.seckill.service.pay;
 
 import com.helmsail.seckill.common.result.Result;
+import com.helmsail.seckill.support.api.pay.PayChannelType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,22 +15,22 @@ public class PayController {
     private final PayService payService;
 
     /**
-     * 预支付：获取支付二维码
+     * 预支付：获取支付二维码（渠道：mock 模拟 / alipay 支付宝沙箱）
      */
     @PostMapping("/prepay")
-    public Result<String> prePay(@RequestParam String orderNo) {
-        return Result.success(payService.prePay(orderNo));
+    public Result<String> prePay(@RequestParam String orderNo, @RequestParam String channel) {
+        return Result.success(payService.prePay(orderNo, PayChannelType.byCode(channel)));
     }
 
     /**
-     * 支付回调（渠道异步通知，参数为渠道原始字段）
+     * 支付回调（渠道异步通知，参数为渠道原始字段；路径携带渠道路由）
      *
-     * Mock 场景：按 preCreate 返回的说明以 GET 访问本接口即模拟支付成功；
-     * 真实渠道为 POST 异步通知，字段以 verifyNotify 实现为准（生产环境应仅保留 POST 并强制验签）。
+     * 形态与真实渠道一致：POST + form 参数，唯一区别是触发者——
+     * 真实渠道为第三方服务器在用户支付后发起；Mock 为前端"模拟支付成功"按钮扮演第三方发起。
      */
-    @RequestMapping(value = "/callback", method = {RequestMethod.GET, RequestMethod.POST})
-    public Result<Void> callback(@RequestParam Map<String, String> params) {
-        payService.payCallback(params);
+    @PostMapping("/callback/{channel}")
+    public Result<Void> callback(@PathVariable String channel, @RequestParam Map<String, String> params) {
+        payService.payCallback(PayChannelType.byCode(channel), params);
         return Result.success();
     }
 }

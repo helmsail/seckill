@@ -35,6 +35,7 @@
         <dubbo.version>3.3.5</dubbo.version>
         <rocketmq.version>2.3.4</rocketmq.version>
         <xxl-job.version>2.5.0</xxl-job.version>
+        <alipay-easysdk.version>2.2.3</alipay-easysdk.version>
     </properties>
 
     <dependencyManagement>
@@ -117,6 +118,11 @@
                 <groupId>com.xuxueli</groupId>
                 <artifactId>xxl-job-core</artifactId>
                 <version>${xxl-job.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alipay.sdk</groupId>
+                <artifactId>alipay-easysdk</artifactId>
+                <version>${alipay-easysdk.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

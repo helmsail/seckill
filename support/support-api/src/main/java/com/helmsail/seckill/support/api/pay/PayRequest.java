@@ -20,4 +20,7 @@ public class PayRequest implements Serializable {
 
     /** 金额（单位：元） */
     private String totalAmount;
+
+    /** 支付超时（分钟）：与订单关单时间对齐，各渠道按自身格式转换（如支付宝 "10m"） */
+    private Integer timeoutMinutes;
 }
