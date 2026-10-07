@@ -44,7 +44,16 @@ public class OrderSyncConsumer implements RocketMQListener<MessageExt> {
         try {
             BaggageUtils.restore(message.getProperties());
             SeckillOrderSyncEvent event = objectMapper.readValue(json, SeckillOrderSyncEvent.class);
-            supportOrderService.create(buildRequest(event));
+            // 事件字段 → 主域创建请求
+            CreateOrderRequest request = new CreateOrderRequest();
+            request.setOrderNo(event.getOrderNo());
+            request.setUserId(event.getUserId());
+            request.setOrderSource(OrderSource.SECKILL);
+            request.setTotalAmount(event.getTotalAmount());
+            request.setPayAmount(event.getPayAmount());
+            request.setPaidTime(event.getPaidTime());
+            request.setTradeNo(event.getTradeNo());
+            supportOrderService.create(request);
             log.info("秒杀订单同步主域完成: orderNo={}", event.getOrderNo());
         } catch (Exception e) {
             log.error("秒杀订单同步失败: {}", json, e);
@@ -52,17 +61,5 @@ public class OrderSyncConsumer implements RocketMQListener<MessageExt> {
         } finally {
             BaggageUtils.clear();
         }
-    }
-
-    private CreateOrderRequest buildRequest(SeckillOrderSyncEvent event) {
-        CreateOrderRequest request = new CreateOrderRequest();
-        request.setOrderNo(event.getOrderNo());
-        request.setUserId(event.getUserId());
-        request.setOrderSource(OrderSource.SECKILL);
-        request.setTotalAmount(event.getTotalAmount());
-        request.setPayAmount(event.getPayAmount());
-        request.setPaidTime(event.getPaidTime());
-        request.setTradeNo(event.getTradeNo());
-        return request;
     }
 }

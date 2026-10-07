@@ -56,7 +56,13 @@ public class OrderSyncResendJobHandler {
             return;
         }
         List<String> orderNos = paidOrders.stream().map(SeckillOrderDTO::getOrderNo).toList();
-        Set<String> existing = queryExistingOrderNos(orderNos);
+
+        // 分批查询主域已存在的订单号（单批 IN 查询数量受限）
+        Set<String> existing = new HashSet<>();
+        for (int i = 0; i < orderNos.size(); i += QUERY_BATCH_SIZE) {
+            List<String> batch = orderNos.subList(i, Math.min(i + QUERY_BATCH_SIZE, orderNos.size()));
+            existing.addAll(supportOrderService.listExistingOrderNos(batch));
+        }
 
         int resent = 0;
         for (SeckillOrderDTO order : paidOrders) {
@@ -78,17 +84,5 @@ public class OrderSyncResendJobHandler {
         }
         log.info("订单同步补发任务完成: 扫描={}, 缺失={}, 补发={}",
                 paidOrders.size(), paidOrders.size() - existing.size(), resent);
-    }
-
-    /**
-     * 分批查询主域已存在的订单号
-     */
-    private Set<String> queryExistingOrderNos(List<String> orderNos) {
-        Set<String> existing = new HashSet<>();
-        for (int i = 0; i < orderNos.size(); i += QUERY_BATCH_SIZE) {
-            List<String> batch = orderNos.subList(i, Math.min(i + QUERY_BATCH_SIZE, orderNos.size()));
-            existing.addAll(supportOrderService.listExistingOrderNos(batch));
-        }
-        return existing;
     }
 }

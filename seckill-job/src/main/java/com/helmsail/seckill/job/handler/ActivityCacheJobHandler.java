@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 活动缓存同步任务
@@ -35,9 +36,10 @@ import java.util.List;
  *    - 全体 SKU 处理完毕后整体化为 JSON 写入快照键——运行态字段已就地剔除，快照只留静态目录（免得旧值混淆）。
  *
  * 库存仅在本任务“待开始”分支被写入，其余任何分支与状态永不触碰库存键——
- * 运行期实时值只被扣减/回补修改（活动终态归还尚未实现）；所有 key 不设 TTL。
- * 已知边界：活动关闭/删除后离开三态，本任务不再覆盖，缓存残留（Hash field 与 SKU 键）当前无清理方——
- * 正确性由 processor 的 DB 终判兜底（状态流转见 ActivityStatusJobHandler，仅操作 DB 不碰缓存）。
+ * 运行期实时值只被扣减/回补修改；活动终态清理见 StockCleanupJobHandler（壳子，待实现）。
+ * TTL 政策（三态内每轮续期，关闭后自然回收）：快照/上下架 7 天、限购上限 30 天（淘汰方向为“放宽”，须留停摆余量）；
+ * 库存键无 TTL（缺失=全拒且无补充机制，绝不淘汰）；活动 Hash field 无法按 field 过期，由 ActivityInfoCleanupJobHandler 清理。
+ * 正确性兜底：缓存残留/缺失均由 processor 的 DB 终判收口（状态流转见 ActivityStatusJobHandler，仅操作 DB 不碰缓存）。
  */
 @Slf4j
 @Service
@@ -45,6 +47,12 @@ import java.util.List;
 public class ActivityCacheJobHandler {
 
     private static final int WARM_UP_WINDOW_SECONDS = 30 * 60;
+
+    /** 运行态键 TTL（秒）：快照/上下架；刷新任务每轮续期，7 天=任务停摆容忍余量 */
+    private static final int RUNTIME_KEY_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+    /** 限购上限键 TTL（秒）：淘汰方向为“放宽”（缺失=不限购）且无限购 DB 终判，须给足停摆余量 */
+    private static final int QUOTA_KEY_TTL_SECONDS = 30 * 24 * 60 * 60;
 
     @DubboReference
     private ActivityDubboService activityService;
@@ -112,17 +120,19 @@ public class ActivityCacheJobHandler {
                                 String.valueOf(row.getActivityStock()));
                     }
                     redisService.set(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, skuNo),
-                            row.getShelfStatus() != null && row.getShelfStatus() == 1 ? "1" : "0");
+                            row.getShelfStatus() != null && row.getShelfStatus() == 1 ? "1" : "0",
+                            RUNTIME_KEY_TTL_SECONDS, TimeUnit.SECONDS);
                     redisService.set(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, skuNo),
-                            String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()));
+                            String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()),
+                            QUOTA_KEY_TTL_SECONDS, TimeUnit.SECONDS);
                     // 运行态值已入键，就地剔除——快照只留静态目录（免得旧值混淆）
                     row.setActivityStock(null);
                     row.setShelfStatus(null);
                 }
 
-                // 全体 SKU 处理完毕，整体化为 JSON 写入快照键
+                // 全体 SKU 处理完毕，整体化为 JSON 写入快照键（带 TTL：三态内续期，关闭后自然回收）
                 redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
-                        objectMapper.writeValueAsString(rows));
+                        objectMapper.writeValueAsString(rows), RUNTIME_KEY_TTL_SECONDS, TimeUnit.SECONDS);
                 processed++;
             } catch (Exception e) {
                 log.error("活动缓存同步失败: activityNo={}", activity.getActivityNo(), e);
