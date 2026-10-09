@@ -87,7 +87,7 @@ def run(target, cmd, timeout=60):
 # ---- 公用:目标列表 / 角色参数(检查类、动作类脚本共用)----
 
 def all_targets():
-    """[(显示名, run 目标)]:全部 15 角色 + k6(已配置时)。"""
+    """[(显示名, run 目标)]:全部 16 角色 + k6(已配置时)。"""
     t = [(r, r) for r in NODES]
     if K6_PUB:
         t.append(('k6', K6_PUB))
@@ -95,16 +95,17 @@ def all_targets():
 
 
 def roles_from_args(roles_map):
-    """解析命令行角色参数(无参=全部;未知项提示)。"""
-    args = sys.argv[1:]
-    if not args:
-        return list(roles_map)
+    """解析命令行角色参数(无参=全部;未知项提示;未配置节点的角色自动跳过)。"""
+    args = sys.argv[1:] if sys.argv[1:] else list(roles_map)
     out = []
     for a in args:
-        if a in roles_map:
-            out.append(a)
-        else:
+        if a not in roles_map:
             print('!! 未知角色: %s(可用: %s)' % (a, ' '.join(roles_map)))
+            continue
+        if a not in NODES:
+            print('!! 角色 %s 尚未配置节点(NODE_%s 为空;填入后启用)——已跳过' % (a, a.upper()))
+            continue
+        out.append(a)
     return out
 
 
@@ -128,10 +129,12 @@ ROLES = load_roles()
 
 # ---- 环境就绪:确保 Docker 与日志轮转(幂等;换新机由 install_docker.py 补齐)----
 
-ENSURE_DOCKER = r'''if command -v docker >/dev/null 2>&1; then echo "docker ok: $(docker --version)"; else
+ENSURE_DOCKER = r'''if ! command -v docker >/dev/null 2>&1; then
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq 2>&1 | tail -1
+apt-get -o DPkg::Lock::Timeout=300 update -qq 2>&1 | tail -1
 apt-get -o DPkg::Lock::Timeout=300 install -y -qq docker.io docker-compose-v2 2>&1 | tail -4
+fi
+if [ ! -f /etc/docker/daemon.json ]; then
 mkdir -p /etc/docker
 cat > /etc/docker/daemon.json <<'EOF'
 {
@@ -140,9 +143,9 @@ cat > /etc/docker/daemon.json <<'EOF'
 }
 EOF
 systemctl restart docker >/dev/null 2>&1
+fi
 sleep 1
-if command -v docker >/dev/null 2>&1; then echo "已安装: $(docker --version) | $(docker compose version 2>/dev/null | head -1)"; else echo "FAIL 安装失败(apt 输出见上方)"; fi
-fi'''
+if command -v docker >/dev/null 2>&1; then echo "已安装: $(docker --version) | $(docker compose version 2>/dev/null | head -1)"; else echo "FAIL 安装失败(apt 输出见上方)"; fi'''
 
 
 def ensure_docker(target):

@@ -10,6 +10,7 @@
 用法:python scripts/bench.py <rate> <duration>      # 例:python scripts/bench.py 4000 2m
 前提:K6_PUB 已填;活动 ACTIVE 且库存已预热(先跑 python scripts/smoke_test.py)。
 """
+import json
 import os
 import re
 import shutil
@@ -35,7 +36,7 @@ SAMPLE_CMD = (
     "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}'"
 )
 
-# ---- 监控目标(15 生产角色 + k6 压测机)----
+# ---- 监控目标(16 生产角色 + k6 压测机)----
 TARGETS = all_targets()        # [(显示名, run 目标)]
 
 # ---- 双窗口共享状态 ----
@@ -97,7 +98,7 @@ def collect(mach, cont):
 
 
 def sampler(mach, cont):
-    """下窗数据源:每 INTERVAL 秒采样一轮 15 台。"""
+    """下窗数据源:每 INTERVAL 秒采样一轮 16 台。"""
     global cycles
     while not sample_stop.is_set():
         t0 = time.time()
@@ -129,6 +130,7 @@ def _dur_s(d):
 
 def run_k6(rate, duration):
     cmd = ('cd %s && docker compose -f docker-compose.k6.yml run --rm k6 run '
+           '--summary-export=/scripts/summary.json '
            '-e SECKILL_RATE=%s -e DURATION=%s /scripts/seckill-loadtest.js 2>&1') % (K6_DIR, rate, duration)
     cli = ssh(K6_PUB, timeout=20)
     tr = cli.get_transport()
@@ -204,6 +206,34 @@ def render_loop(mach, rows_k6, width):
         time.sleep(RENDER)
 
 
+def _tag_rows(text, name):
+    """解析带标签指标的"子行"块(k6 summary 中 tag 组合是缩进的 { tag:val } 子行,主行不带花括号)。"""
+    m = re.search(r'(?m)^\s*%s[.\s]*:\s*\d+[^\n]*\n((?:\s*\{[^}]+\}[^\n]*\n)+)' % name, text)
+    rows = []
+    if m:
+        for line in m.group(1).splitlines():
+            mm = re.match(r'\s*\{\s*([^}]+?)\s*\}[^:]*:\s*(\d+)', line)
+            if mm:
+                rows.append((mm.group(1).strip(), mm.group(2)))
+    return rows
+
+
+def _json_biz(k6json, name):
+    """从 k6 --summary-export JSON 提取带标签指标的各 tag 组合计数(submetrics 分解;stdout 不展开时用)。"""
+    try:
+        data = json.loads(k6json)
+    except Exception:
+        return []
+    met = ((data.get('metrics') or {}).get(name) or {})
+    rows = []
+    for sm in (met.get('submetrics') or []):
+        mm = re.search(r'\{(.+)\}', str(sm.get('name', '')))
+        cnt = (sm.get('values') or {}).get('count')
+        if mm and cnt is not None:
+            rows.append((mm.group(1).strip(), str(int(cnt))))
+    return rows
+
+
 def parse_k6(text):
     def g(pat, n=None):
         m = re.search(pat, text)
@@ -221,15 +251,27 @@ def parse_k6(text):
         'iters': g(r'(?<![\w])iterations\.+:\s*(\d+)\s+([\d.]+)/s'),
         'pay_ok': g(r'pay_ok\.+:\s*([\d.]+)%\s+(\d+) out of (\d+)'),
         'pay_dur': g(r'(?<![\w])pay_duration\.+:\s*avg=(\S+)\s+min=\S+\s+med=(\S+)\s+p\(90\)=(\S+)\s+p\(95\)=(\S+)\s+p\(99\)=(\S+)'),
-        'seckill_biz': re.findall(r'(?m)^\s*seckill_biz\{([^}]+)\}[^:]*:\s*(\d+)', text),
-        'pay_biz': re.findall(r'(?m)^\s*pay_biz\{([^}]+)\}[^:]*:\s*(\d+)', text),
-        'final': re.findall(r'(?m)^\s*seckill_final\{([^}]+)\}[^:]*:\s*(\d+)', text),
+        'seckill_biz': _tag_rows(text, 'seckill_biz'),
+        'pay_biz': _tag_rows(text, 'pay_biz'),
+        'final': _tag_rows(text, 'seckill_final'),
         'iter_dur': g(r'iteration_duration\.+:\s*avg=(\S+)\s+min=\S+\s+med=(\S+)\s+p\(90\)=(\S+)\s+p\(95\)=(\S+)\s+p\(99\)=(\S+)'),
     }
 
 
 def report(mach, cont, k6text):
+    _log = Path(__file__).resolve().parents[1] / 'temp-scripts'
+    _log.mkdir(exist_ok=True)
+    (_log / 'k6-summary-last.log').write_text(k6text, encoding='utf-8', errors='replace')
     m = parse_k6(k6text)
+    try:
+        k6json = run(K6_PUB, 'cat %s/summary.json 2>/dev/null' % K6_DIR, timeout=30) or ''
+    except Exception:
+        k6json = ''
+    (_log / 'k6-summary-last.json').write_text(k6json, encoding='utf-8', errors='replace')
+    for key, name in (('seckill_biz', 'seckill_biz'), ('pay_biz', 'pay_biz'), ('final', 'seckill_final')):
+        rows = _json_biz(k6json, name)
+        if rows:
+            m[key] = rows
     print('\n========== A. k6 指标 ==========')
     if m['seckill']:
         a, med, p90, p95, p99, mx = m['seckill']

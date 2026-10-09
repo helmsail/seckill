@@ -6,7 +6,7 @@
     python scripts/deploy_push.py list        # 列出角色、目标机与文件清单
     python scripts/deploy_push.py web gw1     # 推送指定角色
     python scripts/deploy_push.py k6          # 只推 k6 压测机文件
-    python scripts/deploy_push.py all         # 全量推送(15 角色 + k6)
+    python scripts/deploy_push.py all         # 全量推送(16 角色 + k6)
 
 说明:
   - 分发=只上传(.env 按节点表自动生成:地址行全部动态替换,无需手改);
@@ -62,6 +62,9 @@ def main():
             continue
         if r not in ROLES:
             print('!! 未知角色: %s' % r)
+            continue
+        if r not in NODES:
+            print('!! %s 尚未配置节点(NODE_%s 为空;填入后启用)——已跳过' % (r, r.upper()))
             continue
         try:
             push(r)

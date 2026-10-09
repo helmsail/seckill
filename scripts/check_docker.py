@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""② 检测 Docker:并行确认各机 Docker 是否已装及版本(15 角色 + k6)。
+"""② 检测 Docker:并行确认各机 Docker 是否已装及版本(16 角色 + k6)。
 
 用法:python scripts/check_docker.py
 """

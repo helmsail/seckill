@@ -3,8 +3,8 @@
 """⑩ 重启:目标角色容器级重启(docker compose restart;保留容器与数据,轻量)。
 
 用法:
-    python scripts/restart.py            # 全部 15 角色
-    python scripts/restart.py mixps      # 指定角色
+    python scripts/restart.py            # 全部 16 角色
+    python scripts/restart.py processor  # 指定角色
 """
 import sys
 from pathlib import Path

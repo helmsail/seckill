@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""① 连接:验证全部节点 SSH 连通(15 角色 + k6 压测机;并行)。
+"""① 连接:验证全部节点 SSH 连通(16 角色 + k6 压测机;并行)。
 
 用法:python scripts/check_conn.py
 """

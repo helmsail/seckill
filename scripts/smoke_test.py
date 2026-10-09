@@ -91,7 +91,7 @@ def main():
         print('✗ 登录失败: %s' % json.dumps(r, ensure_ascii=False)[:200])
         if '_err' in r:
             print('  原始响应: %s' % r['_err'])
-            print('  提示:先 python scripts/check_up.py 确认 15 台容器全 Up')
+            print('  提示:先 python scripts/check_up.py 确认 16 台容器全 Up')
         return 1
     print('✓ 登录 OK')
 

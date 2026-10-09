@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """⑥ 启动:目标角色重建启动(up -d --force-recreate;每台一个多行窗口,实时滚动)。
 
-窗口大小按终端高度自动适配:15 台时每台挤进一屏;单台/少台时窗口更大(输出行更多)。
+窗口大小按终端高度自动适配:16 台时每台挤进一屏;单台/少台时窗口更大(输出行更多)。
 ⚠️ 语义:重建即重置——每执行一次都是"全新环境"(MySQL 重跑 initdb、Redis/MQ 清空);
    仅想轻量重启(保数据)用 restart.py;仅重建单台用 `up.py svc1`。
 用法:
-    python scripts/up.py                # 全部 15 角色(窗口按终端高度自动适配)
+    python scripts/up.py                # 全部 16 角色(窗口按终端高度自动适配)
     python scripts/up.py mysql          # 指定角色(单台窗口自动更大)
     python scripts/up.py --lines 6      # 手动指定每台窗口输出行数(1~30)
 """

@@ -3,7 +3,7 @@
 """⑤ 拉镜像:从 ACR 拉取目标角色最新镜像(自动登录 ACR;不启动)。
 
 用法:
-    python scripts/pull.py            # 全部 15 角色
+    python scripts/pull.py            # 全部 16 角色
     python scripts/pull.py svc1 gw1   # 指定角色
 """
 import sys
