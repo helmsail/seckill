@@ -10,6 +10,7 @@
  *   DURATION            压测时长
  *   PAY_RATIO           秒杀成功后按比例模拟支付(0=关,1=全付)
  *   PRE_VUS             预分配 VU
+ *   MAX_VUS             VU 上限(防膨胀压垮压测机;需 ≥ 速率×迭代时长)
  *   SECKILL_ACTIVITY_NO 活动编号
  *   SECKILL_SKUS        SKU 列表(skuNo:价格,逗号分隔)
  *   USER_COUNT / USER_PREFIX / USER_PASSWORD   压测账号池
@@ -94,6 +95,7 @@ const SECKILL_RATE = Number(need('SECKILL_RATE'));
 const DURATION = need('DURATION');
 const PAY_RATIO = Math.max(0, Math.min(1, Number(need('PAY_RATIO')))); // 0=不支付,1=全支付
 const PRE_VUS = Number(need('PRE_VUS')); // 预分配 VU(本地联调可在 .env 调小)
+const MAX_VUS = Number(need('MAX_VUS')); // VU 上限(防膨胀;需 ≥ 速率×迭代时长)
 const ACTIVITY_NO = need('SECKILL_ACTIVITY_NO');
 const USER_COUNT = Number(need('USER_COUNT')); // 与实际种子账号池一致(lt00001~lt100000)
 const USER_PREFIX = need('USER_PREFIX');
@@ -153,7 +155,7 @@ export const options = {
       timeUnit: '1s',
       duration: DURATION,
       preAllocatedVUs: PRE_VUS, // deploy/.env【C】区;需 ≥ 速率×迭代时长
-      maxVUs: USER_COUNT, // 与账号 1:1，用户不重复
+      maxVUs: MAX_VUS, // deploy/.env【C】区;上限防膨胀(需 ≥ 速率×迭代时长;≤ 账号数保证用户不重复)
     },
     // 混合读流量（BROWSE_RATE=0 时自动禁用）
     ...(BROWSE_RATE > 0

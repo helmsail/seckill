@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""④ 压测:k6 执行 + 全机监控采样(机器级 & 容器级 avg/peak)+ 指标自动解析。
+"""⑨ 压测:k6 执行 + 全机监控(双窗口实时看板)+ 结束分析总结。
+
+双窗口(同一终端上下两块,实时刷新):
+  上窗:k6 执行全过程(实时滚动,最近 N 行);
+  下窗:每个采样周期(10s)探测的机器使用率(周期跳动更新);
+  结束后:A(k6 指标)/ B(机器级)/ C(容器级)分析总结。
 
 用法:python scripts/bench.py <rate> <duration>      # 例:python scripts/bench.py 4000 2m
-前提:common.K6_PUB 已填(压测机;脚本会自动自举:推脚本/compose + TCP 调优 + ACR 登录);活动 ACTIVE 且库存已预热。
-
-输出三块:
-  A. k6 指标(秒杀/HTTP 分位、成功率、dropped、迭代吞吐);
-  B. 机器级:每台 CPU avg/peak、iowait avg、Mem avg/peak;
-  C. 容器级:每台机每个容器的 CPU avg/peak、Mem avg/peak(压测期间 10s 一采)。
+前提:K6_PUB 已填;活动 ACTIVE 且库存已预热(先跑 python scripts/smoke_test.py)。
 """
+import os
 import re
+import shutil
 import sys
+import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import ENV, K6_DIR, K6_PUB, NODES, k6_bootstrap, run, ssh  # noqa: E402
+from common import ENV, K6_DIR, K6_PUB, NODES, all_targets, k6_bootstrap, run, ssh  # noqa: E402
 
-INTERVAL = 10  # 监控采样间隔(秒)
+INTERVAL = 10   # 监控采样间隔(秒)
+RENDER = 0.5    # 看板刷新间隔(秒)
 
 # 每台采样:机器级(两次 /proc/stat 差 + 内存)+ 容器级(docker stats)
 SAMPLE_CMD = (
@@ -30,6 +34,16 @@ SAMPLE_CMD = (
     "free -m | sed -n '2p'; "
     "docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}'"
 )
+
+# ---- 监控目标(15 生产角色 + k6 压测机)----
+TARGETS = all_targets()        # [(显示名, run 目标)]
+
+# ---- 双窗口共享状态 ----
+k6_lines = deque(maxlen=500)   # 上窗:k6 实时输出行
+_partial = ''                  # 行缓冲残留(半个行)
+cycles = 0                     # 已完成采样周期数
+render_stop = threading.Event()
+sample_stop = threading.Event()
 
 
 def avg(v):
@@ -47,13 +61,14 @@ def parse_mib(s):
     return float(s.replace('MiB', '').replace('%', ''))
 
 
-def sample_role(role):
-    return role, run(role, SAMPLE_CMD, timeout=30)
+def sample_role(item):
+    name, target = item
+    return name, run(target, SAMPLE_CMD, timeout=30)
 
 
 def collect(mach, cont):
-    with ThreadPoolExecutor(max_workers=len(NODES)) as ex:
-        for role, out in ex.map(sample_role, list(NODES)):
+    with ThreadPoolExecutor(max_workers=len(TARGETS)) as ex:
+        for role, out in ex.map(sample_role, TARGETS):
             lines = [l for l in out.splitlines() if l.strip()]
             if len(lines) < 4:
                 continue
@@ -81,28 +96,112 @@ def collect(mach, cont):
                 continue
 
 
+def sampler(mach, cont):
+    """下窗数据源:每 INTERVAL 秒采样一轮 15 台。"""
+    global cycles
+    while not sample_stop.is_set():
+        t0 = time.time()
+        collect(mach, cont)
+        cycles += 1
+        time.sleep(max(1, INTERVAL - (time.time() - t0)))
+
+
+def _feed(data):
+    """k6 输出块 → 行缓冲(上窗滚动)。"""
+    global _partial
+    _partial += data
+    parts = _partial.split('\n')
+    _partial = parts.pop()
+    for l in parts:
+        l = l.replace('\r', '').rstrip()
+        if not l or 'level=warning' in l or 'level=error' in l:
+            continue
+        k6_lines.append(l[:200])
+
+
+def _dur_s(d):
+    """'2m'/'90s'/'1h' → 秒(k6 duration;解析失败按 10 分钟余量处理)。"""
+    m = re.match(r'\s*(\d+)\s*([smh]?)\s*$', str(d))
+    if not m:
+        return 600
+    return int(m.group(1)) * {'': 1, 's': 1, 'm': 60, 'h': 3600}[m.group(2)]
+
+
 def run_k6(rate, duration):
     cmd = ('cd %s && docker compose -f docker-compose.k6.yml run --rm k6 run '
            '-e SECKILL_RATE=%s -e DURATION=%s /scripts/seckill-loadtest.js 2>&1') % (K6_DIR, rate, duration)
     cli = ssh(K6_PUB, timeout=20)
-    ch = cli.get_transport().open_session()
+    tr = cli.get_transport()
+    ch = tr.open_session()
     ch.settimeout(900)
     ch.exec_command(cmd)
     buf = []
+    deadline = time.time() + _dur_s(duration) + 600  # 压测时长 + 10 分钟余量(启动/优雅停止/裕量)
     while True:
+        try:
+            alive = tr.is_active()
+        except Exception:
+            alive = False
+        if not alive:
+            print('!! 与压测机连接中断(过载/失联)——提前结束', flush=True)
+            break
+        if time.time() > deadline:
+            print('!! 超过预期时长仍未结束(连接假死)——提前结束', flush=True)
+            try:
+                ch.close()
+                cli.close()
+            except Exception:
+                pass
+            break
         if ch.recv_ready():
             data = ch.recv(65536).decode(errors='replace')
-            if 'level=warning' not in data and 'level=error' not in data:
-                print(data, end='', flush=True)
             buf.append(data)
+            _feed(data)
         elif ch.exit_status_ready():
             break
         else:
             time.sleep(0.2)
     while ch.recv_ready():
-        buf.append(ch.recv(65536).decode(errors='replace'))
+        data = ch.recv(65536).decode(errors='replace')
+        buf.append(data)
+        _feed(data)
+    global _partial
+    last = _partial.replace('\r', '').rstrip()
+    if last:
+        k6_lines.append(last[:200])
+    _partial = ''
     cli.close()
     return ''.join(buf)
+
+
+def build_frame(mach, rows_k6, width):
+    lines = []
+    lines.append(('── k6 执行(实时滚动;最近 %d 行)──' % rows_k6)[:width])
+    tail = list(k6_lines)[-rows_k6:]
+    pad = rows_k6 - len(tail)
+    for i in range(rows_k6):
+        lines.append(('' if i < pad else tail[i - pad])[:width])
+    lines.append(('── 机器使用率(第 %d 周期;每 %ds 刷新;%d 台)──' % (cycles, INTERVAL, len(mach)))[:width])
+    lines.append(('%-8s %7s %7s %8s %7s %7s' % ('机器', 'CPU', 'CPU峰', 'iowait', 'Mem', 'Mem峰'))[:width])
+    for r in mach:
+        d = mach[r]
+        lines.append(('%-8s %6.1f%% %6.1f%% %7.1f%% %6.1f%% %6.1f%%' % (
+            r, avg(d['cpu']), peak(d['cpu']), avg(d['io']), avg(d['mem']), peak(d['mem'])))[:width])
+    return lines
+
+
+def render_loop(mach, rows_k6, width):
+    """双窗口整屏重画(0.5s/帧)。"""
+    first = True
+    while not render_stop.is_set():
+        frame = build_frame(mach, rows_k6, width)
+        if not first:
+            sys.stdout.write('\x1b[%dA' % len(frame))
+        for l in frame:
+            sys.stdout.write('\x1b[2K' + l + '\n')
+        sys.stdout.flush()
+        first = False
+        time.sleep(RENDER)
 
 
 def parse_k6(text):
@@ -119,8 +218,12 @@ def parse_k6(text):
         'http': g(r'http_req_duration\.+:\s*avg=(\S+)\s+min=\S+\s+med=(\S+)\s+p\(90\)=(\S+)\s+p\(95\)=(\S+)\s+p\(99\)=(\S+)\s+max=(\S+)'),
         'http_fail': g(r'http_req_failed\.+:\s*([\d.]+)%\s+(\d+) out of (\d+)'),
         'dropped': g(r'dropped_iterations\.+:\s*(\d+)'),
-        'iters': g(r'iterations\.+:\s*(\d+)\s+([\d.]+)/s'),
+        'iters': g(r'(?<![\w])iterations\.+:\s*(\d+)\s+([\d.]+)/s'),
         'pay_ok': g(r'pay_ok\.+:\s*([\d.]+)%\s+(\d+) out of (\d+)'),
+        'pay_dur': g(r'(?<![\w])pay_duration\.+:\s*avg=(\S+)\s+min=\S+\s+med=(\S+)\s+p\(90\)=(\S+)\s+p\(95\)=(\S+)\s+p\(99\)=(\S+)'),
+        'seckill_biz': re.findall(r'(?m)^\s*seckill_biz\{([^}]+)\}[^:]*:\s*(\d+)', text),
+        'pay_biz': re.findall(r'(?m)^\s*pay_biz\{([^}]+)\}[^:]*:\s*(\d+)', text),
+        'final': re.findall(r'(?m)^\s*seckill_final\{([^}]+)\}[^:]*:\s*(\d+)', text),
         'iter_dur': g(r'iteration_duration\.+:\s*avg=(\S+)\s+min=\S+\s+med=(\S+)\s+p\(90\)=(\S+)\s+p\(95\)=(\S+)\s+p\(99\)=(\S+)'),
     }
 
@@ -146,51 +249,63 @@ def report(mach, cont, k6text):
         print('dropped: %s' % m['dropped'][0])
     if m['iter_dur']:
         print('迭代时长: avg=%s med=%s p90=%s p95=%s p99=%s' % m['iter_dur'])
+    if m['pay_dur']:
+        print('支付耗时: avg=%s med=%s p90=%s p95=%s p99=%s' % m['pay_dur'])
+    if m['seckill_biz']:
+        print('受理细分: %s' % '; '.join('%s=%s' % (k, v) for k, v in m['seckill_biz']))
+    if m['pay_biz']:
+        print('支付细分: %s' % '; '.join('%s=%s' % (k, v) for k, v in m['pay_biz']))
+    if m['final']:
+        print('终态抽查: %s' % '; '.join('%s=%s' % (k, v) for k, v in m['final']))
 
     print('\n========== B. 机器级(CPU/iowait/内存)==========')
     print('%-10s %8s %8s %8s %8s %8s' % ('机器', 'CPU avg', 'CPU peak', 'io avg', 'Mem avg', 'Mem peak'))
-    for role in NODES:
+    for role in mach:
         d = mach[role]
         print('%-10s %7.1f%% %7.1f%% %7.1f%% %7.1f%% %7.1f%%' % (
             role, avg(d['cpu']), peak(d['cpu']), avg(d['io']), avg(d['mem']), peak(d['mem'])))
 
     print('\n========== C. 容器级(每机每容器)==========')
     print('%-12s %-26s %8s %8s %9s %9s' % ('机器', '容器', 'CPU avg', 'CPU peak', 'Mem avg', 'Mem peak'))
-    for role in NODES:
+    for role in mach:
         for name, d in sorted(cont[role].items()):
             print('%-12s %-26s %7.1f%% %7.1f%% %8.0fM %8.0fM' % (
                 role, name, avg(d['cpu']), peak(d['cpu']), avg(d['mem']), peak(d['mem'])))
 
 
 def main():
+    if sys.platform == 'win32':
+        os.system('')  # 启用控制台 ANSI(VT)渲染
     rate = sys.argv[1] if len(sys.argv) > 1 else ENV.get('SECKILL_RATE', '4000')
     duration = sys.argv[2] if len(sys.argv) > 2 else ENV.get('DURATION', '2m')
     if not K6_PUB:
-        print('!! 压测机未配置:请先在 scripts/common.py 填入 K6_PUB')
+        print('!! 压测机未配置:请先在 deploy/.env【A】区填 K6_PUB / K6_PRIV')
         sys.exit(1)
-    print('===== 压测 %s QPS × %s(PAY_RATIO=%s;10s 采样)=====' % (rate, duration, ENV.get('PAY_RATIO', '?')))
+
+    term = shutil.get_terminal_size()
+    width = max(80, term.columns - 1)
+    rows_k6 = max(5, term.lines - len(TARGETS) - 5)
+    total = rows_k6 + len(TARGETS) + 3
+    if total > term.lines:
+        print('!! 终端 %d 行 < 看板 %d 行:建议拉高终端窗口(可能滚动错位)' % (term.lines, total))
+    print('===== 压测 %s QPS × %s(PAY_RATIO=%s;双窗口:上=k6 / 下=使用率)=====' % (rate, duration, ENV.get('PAY_RATIO', '?')))
     k6_bootstrap()
 
-    mach = {r: {'cpu': [], 'io': [], 'mem': []} for r in NODES}
-    cont = {r: {} for r in NODES}
+    mach = {name: {'cpu': [], 'io': [], 'mem': []} for name, _ in TARGETS}
+    cont = {name: {} for name, _ in TARGETS}
 
-    import threading
-    stop = threading.Event()
+    th_s = threading.Thread(target=sampler, args=(mach, cont), daemon=True)
+    th_s.start()
+    th_r = threading.Thread(target=render_loop, args=(mach, rows_k6, width), daemon=True)
+    th_r.start()
 
-    def loop():
-        while not stop.is_set():
-            t0 = time.time()
-            collect(mach, cont)
-            print('  [采样] %d 轮完成(%.1fs)' % (len(mach['web']['cpu']), time.time() - t0), flush=True)
-            time.sleep(max(1, INTERVAL - (time.time() - t0)))
-
-    th = threading.Thread(target=loop, daemon=True)
-    th.start()
-    time.sleep(2)
-
-    k6text = run_k6(rate, duration)
-    stop.set()
-    time.sleep(1)
+    try:
+        k6text = run_k6(rate, duration)
+    finally:
+        sample_stop.set()
+        time.sleep(0.3)
+        render_stop.set()
+        th_r.join(timeout=3)
 
     report(mach, cont, k6text)
 
