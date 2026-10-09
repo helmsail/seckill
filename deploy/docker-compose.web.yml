@@ -1,0 +1,29 @@
+# 秒杀系统 · 单实例分解部署(v4 · 2026-10-08)——web/nginx 独占(4C8G;IP 由 .env HOST_IP 注入)
+#
+# 【一组件一机】对外入口(C 端静态页 + 运营端 + /api 反代到 gateway);
+#   - nginx.conf 为 envsubst 模板:upstream 指向三台网关;listen 端口由 WEB_PORT 注入;
+#   - host 网络模式:nginx 直接监听宿主机 ${WEB_PORT}(18087),不走容器 veth/DNAT——
+#     3000 档实测:容器网络路径下软中断(si)与系统态(sy)合计吃掉整机一半 CPU,是 web 真瓶颈
+#   - ⚠️ host 模式与 ports 映射互斥,二者只能留一;对外访问地址不变(内网 IP:18087)。
+#   - ⚠️ environment 必须包含模板中全部 ${VAR}(缺一个会导致 envsubst 不替换→nginx 启动失败重启循环)
+# 启动:docker compose -f docker-compose.web.yml up -d
+name: seckill-web
+
+services:
+
+  seckill-web:
+    image: ${IMAGE_REGISTRY}/seckill-web:${IMAGE_TAG}
+    container_name: seckill-web
+    network_mode: host
+    cpus: 3.0
+    restart: unless-stopped
+    environment:
+      GATEWAY1_ADDR: ${GATEWAY1_ADDR}
+      GATEWAY2_ADDR: ${GATEWAY2_ADDR}
+      GATEWAY3_ADDR: ${GATEWAY3_ADDR}
+      WEB_PORT: ${WEB_PORT}
+    volumes:
+      # envsubst 模板挂载(启动时生成 /etc/nginx/conf.d/default.conf;覆盖镜像内置的本地版)
+      - ./nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      # 压测版主配置(worker_connections 65535 等;不挂则回退镜像默认 1024,高并发会连接风暴)
+      - ./nginx-main.conf:/etc/nginx/nginx.conf:ro

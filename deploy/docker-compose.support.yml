@@ -1,0 +1,26 @@
+# 秒杀系统 · v6.1(2026-10-09)——support 独占(原 mixRS 机;redis 已拆出到独立机)
+#
+# 【一组件一机】原"Redis + support"混合机,v6.1 拆分后仅保留 support:
+#   - support:用户/商品/支付支撑(登录风暴承载);cpus 3.5(独占整机)、堆 1g;
+#   - redis 见 docker-compose.redis.yml(独立机)。
+# 启动:docker compose -f docker-compose.support.yml up -d
+name: seckill-support
+
+services:
+
+  seckill-support:
+    image: ${IMAGE_REGISTRY}/seckill-support:${IMAGE_TAG}
+    container_name: seckill-support
+    cpus: 3.5
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JAVA_TOOL_OPTIONS: "${SUPPORT_JAVA_OPTS}"
+      DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    ports:
+      - "${SUPPORT_PORT}:${SUPPORT_PORT}"
+      - "${SUPPORT_DUBBO_PORT}:${SUPPORT_DUBBO_PORT}"
+
+networks:
+  default:
+    name: seckill-net

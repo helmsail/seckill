@@ -1,12 +1,9 @@
-# 秒杀系统 · 服务器部署拆分（B1~B3 业务核心节点 · 4C8G ×3，每台各起一份）——base
+# 秒杀系统 · v6 架构(2026-10)——base 独占(4C8G · base-1/2/3/4 四台;IP 由 .env HOST_IP 注入)
 #
-# 【N 拓扑说明】按本地实测比例收敛（base≈22%，两轮实测中占比最高的业务模块之一）：
-#   ~8.6 核 @5000 极限，拆 3 个实例（@4000 生产档每台 57%）；
-#   - base 无定时任务/本地单例状态，多实例安全：service/processor/support 经 Dubbo 负载均衡调用；
-#   - 本文件每台执行一份，三台都注册到出口 IP（DUBBO_IP_TO_REGISTRY 见 environment）。
-#
-# 启动（每台各执行）：docker compose -f docker-compose.base.yml up -d
-# 更新：docker compose -f docker-compose.base.yml pull && docker compose -f docker-compose.base.yml up -d
+# 【一组件一机】热链路组件:发号 + 商品/活动聚合;4C8G 标定,4000 档预估 ~2.75/4 核(68%);
+#   - JVM 堆 2g;cpus 3.5(留 0.5 给系统);
+#   - 雪花机器号显式指定 106/116/126/136(w0/w1/w2/w3 镜像变体各自错开,与 IP 解耦)。
+# 启动:docker compose -f docker-compose.base.yml up -d
 name: seckill-base
 
 services:
@@ -18,10 +15,20 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      # 堆（默认值；要调整在 .env ⑤ 区设 BASE_JAVA_OPTS 覆盖）
-      JAVA_TOOL_OPTIONS: "${BASE_JAVA_OPTS:--Xms3g -Xmx3g}"
-      # 跨机 Dubbo 调用不能注册容器内网 IP（注册宿主内网 IP + 端口映射见 ports）
+      # 压测静音日志:以 log4j2 标准方式指定外置配置(ShardingSphere SQL 日志降 WARN;LOGGING_CONFIG 是 logback 机制对 log4j2 无效)
+      # GC 日志:排查“CPU 脉冲/长尾”与 GC 停顿相关性(读:docker exec seckill-base tail -40 /app/gc.log)
+      JAVA_TOOL_OPTIONS: "${BASE_JAVA_OPTS} -Dlog4j2.configurationFile=file:/app/log4j2-quiet.xml -Xlog:gc*:file=/app/gc.log:time,uptime:filecount=2,filesize=20m"
+      # Hikari 连接池参数在 shardingsphere-sharding.yaml(jar 内):v2.1 起 maximumPoolSize=50
+      # （实测默认 10 时高并发下 214 线程排队等连接 → p99 15s；扩容后 p99 降至 3.3s）
+      # 🧊 显式雪花机器号(0..255;与 IP 第四段无关)
+      SNOWFLAKE_MACHINE_ID: ${BASE1_SNOWFLAKE_ID}
       DUBBO_IP_TO_REGISTRY: ${HOST_IP}
+    volumes:
+      - ./log4j2-quiet.xml:/app/log4j2-quiet.xml:ro
     ports:
       - "${BASE_SERVER_PORT}:${BASE_SERVER_PORT}"
       - "${BASE_DUBBO_PORT}:${BASE_DUBBO_PORT}"
+
+networks:
+  default:
+    name: seckill-net

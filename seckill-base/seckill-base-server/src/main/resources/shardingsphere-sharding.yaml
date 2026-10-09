@@ -7,6 +7,11 @@ dataSources:
     jdbcUrl: jdbc:mysql://$${MYSQL_HOST::}:$${MYSQL_PORT::}/seckill?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
     username: $${MYSQL_USERNAME::}
     password: $${MYSQL_PASSWORD::}
+    # 连接池:默认 maximumPoolSize=10 在高并发下会形成获取连接排队(jstack 实测 214 线程等 HikariPool.getConnection)
+    # 50×2 实例=100 连接,远低于 MySQL max_connections=500
+    maximumPoolSize: 50
+    minimumIdle: 20
+    connectionTimeout: 10000
 
 rules:
   # 单表规则：SS 5.5 非分片表必须显式声明才会加载（否则绑定期报 TableNotFound）
@@ -32,6 +37,13 @@ rules:
     keyGenerators:
       snowflake:
         type: SNOWFLAKE
+        # 表主键发号：多实例必须按实例错开 worker-id(默认 0；同号双实例同毫秒会产生重复主键)
+        # ⚠️ 实测：SS 5.5 的 $${KEY::} 环境变量占位对 props 数值字段不生效（启动不报错但仍用默认 0）
+        # 当前部署：用“镜像变体”把 worker-id 写死 —— base-1→v1.0-w0(0)、base-2→v1.0-w1(1)；
+        #   构建脚本 deploy/tools/mkjar.py（替换本文件后塞回 jar，免 Maven）
+        # 下文占位仅作标记；若未来完整 Maven 构建用于多实例，请先替换为具体数字再打包
+        props:
+          worker-id: $${SNOWFLAKE_WORKER_ID::0}
 
 props:
   sql-show: true

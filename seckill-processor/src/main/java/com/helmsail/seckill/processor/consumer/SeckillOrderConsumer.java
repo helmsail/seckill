@@ -40,7 +40,13 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 @RocketMQMessageListener(
         topic = MqTopic.SECKILL_ORDER,
-        consumerGroup = MqGroup.SECKILL_ORDER_CONSUMER
+        consumerGroup = MqGroup.SECKILL_ORDER_CONSUMER,
+        // 并发消费线程:v6 架构单实例 200 线程(替代 5 实例×40;8 队列由单实例统一消费,分配更均匀)。
+        // 标定:40 线程(单条含 3 次串行 base 调用)≈2400/s → 200 线程 ≈1 万/s 级,覆盖 4000/s 目标。
+        // 2.3.4 语义:consumeThreadNumber → setConsumeThreadMin;consumeThreadMax → setConsumeThreadMax(两者必须同设,
+        // 否则核心池=20、队列无界,线程永不会扩到 max)
+        consumeThreadNumber = 200,
+        consumeThreadMax = 200
 )
 public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 

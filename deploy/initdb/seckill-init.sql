@@ -160,8 +160,8 @@ CREATE TABLE IF NOT EXISTS t_order (
 --      完整链路：冷启动初始化 -> 应用启动（3~5 分钟）-> cacheJob 预热（写快照/在售/库存）
 --      -> 到点 activityStatusJob 自动激活 -> 开始压测（约在冷启动后 5 分钟；激活后长期有效，
 --      之后随压随测，无需再次等待）；
---   3. 用户：运营账号 3 个（管理端演示）+ 压测用户池 lt0001 ~ lt5000（密码 123456，C 端）——
---      用户级令牌桶 1 QPS/用户，5000 个账号支撑 5000 VU 并发上限；
+--   3. 用户：运营账号 3 个（管理端演示）+ 压测用户池 lt00001 ~ lt40000（密码 123456，C 端）——
+--      用户级令牌桶 1 QPS/用户，40000 个账号支撑 40000 VU 并发上限；
 --   4. 验收口径（逐 SKU 独立核对）：成功订单数 + Redis 剩余库存 = 划拨库存 100 万
 --      （不超卖即成功数 <= 100 万；正常压测不会售罄）。
 
@@ -231,15 +231,17 @@ VALUES
     ('LT-LOADTEST-001', '1752035167127867401', '三只松鼠 每日坚果大礼包', '2752036055439642642', '每日坚果 8袋装',
      0, NULL, 139.00, 99.00, 1000000, 0, 1);
 
--- ---------- 用户：运营 3 个（管理端演示）+ 压测用户池 20000 个（循环生成） ----------
+-- ---------- 用户：运营 3 个（管理端演示）+ 压测用户池 10 万个（循环生成） ----------
 INSERT INTO t_user (username, password, role) VALUES
 ('admin', 'admin123', 1),
 ('operator01', '123456', 1),
 ('operator02', '123456', 1);
 
--- 压测用户池（循环生成）：lt00001 ~ lt20000，密码 123456，C 端用户
+-- 压测用户池（循环生成）：lt00001 ~ lt100000（10 万），密码 123456，C 端用户
+-- 用户级令牌桶 1 QPS/用户：驱动 k6 扩容（maxVUs=账号数），5,000 档需 ~5 万 VU（重试/支付等长迭代）
 INSERT INTO t_user (username, password, role)
-SELECT CONCAT('lt', LPAD(n, 5, '0')), '123456', 0
+-- n=100000 时 LPAD(100000,5) 会截断为 '10000' 与 lt10000 冲突，需 CASE 特判
+SELECT CASE WHEN n = 100000 THEN 'lt100000' ELSE CONCAT('lt', LPAD(n, 5, '0')) END, '123456', 0
 FROM (
   SELECT a.n + b.n * 10 + c.n * 100 + d.n * 1000 + e.n * 10000 + 1 AS n
   FROM (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) a
@@ -248,5 +250,5 @@ FROM (
   CROSS JOIN (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) d
   CROSS JOIN (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) e
 ) seq
-WHERE n <= 20000;
+WHERE n <= 100000;
 

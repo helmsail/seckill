@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 秒杀 base 日志配置(部署层外置,经 LOGGING_CONFIG 环境变量加载,不改 jar)
+     与 jar 内 log4j2-spring.xml 一致,仅将 ShardingSphere 日志降为 WARN
+     (默认每条 SQL 打 Logic+Actual 两行 INFO,高吞吐下格式化+输出显著吃 CPU;
+      WARN 级:平时安静,异常可见) -->
+<Configuration status="WARN">
+    <Properties>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] [traceId=%X{traceId}] [userId=%X{userId}] %-5level %logger{36} - %msg%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <!-- 兜底:即便 logger 名有出入,也拦截 ShardingSphere SQL 行 -->
+            <RegexFilter regex=".*ShardingSphere-SQL.*" onMatch="DENY" onMismatch="ACCEPT"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <!-- ShardingSphere 的 SQL logger 名即为 "ShardingSphere-SQL"(顶级名,不在包命名空间);降为 WARN:平时安静,异常可见 -->
+        <Logger name="ShardingSphere-SQL" level="WARN"/>
+        <Logger name="org.apache.shardingsphere" level="WARN"/>
+        <AsyncRoot level="INFO">
+            <AppenderRef ref="Console"/>
+        </AsyncRoot>
+    </Loggers>
+</Configuration>

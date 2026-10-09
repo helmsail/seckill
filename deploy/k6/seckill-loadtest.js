@@ -4,29 +4,30 @@
  * 覆盖功能：登录 → 秒杀下单（六项准入 + MQ 受理）→【按比例】模拟支付
  *          （等出单 → 预支付 → 模拟回调）→ 抽样终态轮询。
  *
- * ── 配置（只 4 项，都在 deploy/.env 的"压测 k6"段维护）──────────────
- *   BASE_URL       压测目标（本地联调 http://localhost:18080；服务器 http://<D2 web IP>:18087 经 nginx 分摊；单网关直连 http://<Gx IP>:18080）
- *   SECKILL_RATE   每秒秒杀提交数
- *   DURATION       压测时长
- *   PAY_RATIO      秒杀成功后按比例模拟支付（0=关，1=全付）
- *   临时覆盖用 -e KEY=VALUE（优先级：-e > .env > 代码默认）；
- *   其余（账号池/SKU/活动号等）均为代码内默认——种子环境专用，无需配置。
+ * ── 配置（全部在 deploy/.env【B】区维护,脚本不硬编码;缺项启动即报错）────
+ *   BASE_URL            压测目标(经 web 的 nginx;单组件定位可直连网关)
+ *   SECKILL_RATE        每秒秒杀提交数
+ *   DURATION            压测时长
+ *   PAY_RATIO           秒杀成功后按比例模拟支付(0=关,1=全付)
+ *   PRE_VUS             预分配 VU
+ *   SECKILL_ACTIVITY_NO 活动编号
+ *   SECKILL_SKUS        SKU 列表(skuNo:价格,逗号分隔)
+ *   USER_COUNT / USER_PREFIX / USER_PASSWORD   压测账号池
+ *   临时覆盖用 -e KEY=VALUE(优先级:-e > .env)。
  *
  * ── 运行 ────────────────────────────────────────────────────────
- *   直接跑（读 .env 配置）
- *     k6 run deploy/k6/seckill-loadtest.js
- *   临时改压力
- *     k6 run -e SECKILL_RATE=3000 -e DURATION=10m deploy/k6/seckill-loadtest.js
- *   实时看板（过程中可视化各指标）
- *     PowerShell:  $env:K6_WEB_DASHBOARD='true'; k6 run deploy/k6/seckill-loadtest.js
+ *   常态:python scripts/bench.py <rate> <duration>(bench 自动推送本脚本+compose+.env 到压测机)
+ *   压测机手工:见 deploy/docker-compose.k6.yml 注释(docker compose run 一次性容器)
+ *   实时看板(过程中可视化各指标)
+ *     PowerShell:  $env:K6_WEB_DASHBOARD='true'; k6 run seckill-loadtest.js
  *     浏览器打开 http://127.0.0.1:5665
  *   结果导出
- *     k6 run --summary-export=summary.json ...（或 --out csv=result.csv）
+ *     k6 run --summary-export=summary.json ...(或 --out csv=result.csv)
  *
  * ── 前置条件 ────────────────────────────────────────────────────
  *   1. 环境已冷启动：setup 自动等待"库存键预热 + 活动 ACTIVE"（≤20 分钟；
  *      种子活动开始时间 = 数据库初始化 +5 分钟）；
- *   2. 压测账号 lt00001~lt20000（/123456）已就位（initdb 种子或热插）。
+ *   2. 压测账号池(USER_COUNT / USER_PREFIX / USER_PASSWORD,deploy/.env)已就位(initdb 种子)。
  *
  * ── 指标口径 ────────────────────────────────────────────────────
  *   seckill_duration       秒杀提交耗时（summary 输出 avg/med/p90/p95/p99/max）
@@ -57,11 +58,11 @@ import { Counter, Trend, Rate } from 'k6/metrics';
 // 一、配置（读 deploy/.env；-e KEY=VALUE 可临时覆盖）
 // ============================================================
 
-/** 读取同包 .env（相对脚本路径 ../.env）；文件缺失时回退为空配置 */
+/** 读取同目录 .env(容器内 /scripts/.env = 宿主 K6_DIR/.env,由 bench.py 自动推送);文件缺失时回退为空配置 */
 function loadDotEnv() {
   try {
     const out = {};
-    String(open('../.env')).split('\n').forEach((line) => {
+    String(open('./.env')).split('\n').forEach((line) => {
       const s = line.trim();
       if (!s || s.startsWith('#')) return;
       const eq = s.indexOf('=');
@@ -75,55 +76,52 @@ function loadDotEnv() {
 }
 const dotenv = loadDotEnv();
 
-/** 取值优先级：-e（__ENV）> .env（非空）> 代码默认值 */
-function cfg(key, def) {
-  if (__ENV[key] !== undefined) return __ENV[key];
-  return dotenv[key] !== undefined && dotenv[key] !== '' ? dotenv[key] : def;
+/** 取值优先级:-e(__ENV)> .env(非空);脚本内不再保留硬编码默认值 */
+function cfg(key) {
+  if (__ENV[key] !== undefined && __ENV[key] !== '') return __ENV[key];
+  return dotenv[key] !== undefined ? dotenv[key] : '';
 }
-function cfgNum(key, def) {
-  return Number(cfg(key, def));
+/** 必填项:缺失直接失败(提示检查 deploy/.env) */
+function need(key) {
+  const v = cfg(key);
+  if (v === '') fail(`缺少配置 ${key}:请检查 deploy/.env(或 -e ${key}=值 临时覆盖)`);
+  return v;
 }
 
-// ---- 可配置项（deploy/.env 顶部"压测 k6"段；-e 可临时覆盖）----
-const BASE_URL = cfg('BASE_URL', 'http://localhost:18080');
-const SECKILL_RATE = cfgNum('SECKILL_RATE', 500);
-const DURATION = cfg('DURATION', '3m');
-const PAY_RATIO = Math.max(0, Math.min(1, cfgNum('PAY_RATIO', 0.2))); // 0=不支付，1=全支付
-const PRE_VUS = cfgNum('PRE_VUS', 5000); // 预分配 VU：服务器 5000；本地联调（内存有限）调小如 800
+// ---- 全部来自 deploy/.env【B】区(压测与冒烟);-e 可临时覆盖 ----
+const BASE_URL = need('BASE_URL');
+const SECKILL_RATE = Number(need('SECKILL_RATE'));
+const DURATION = need('DURATION');
+const PAY_RATIO = Math.max(0, Math.min(1, Number(need('PAY_RATIO')))); // 0=不支付,1=全支付
+const PRE_VUS = Number(need('PRE_VUS')); // 预分配 VU(本地联调可在 .env 调小)
+const ACTIVITY_NO = need('SECKILL_ACTIVITY_NO');
+const USER_COUNT = Number(need('USER_COUNT')); // 与实际种子账号池一致(lt00001~lt100000)
+const USER_PREFIX = need('USER_PREFIX');
+const USER_PASSWORD = need('USER_PASSWORD');
+const BROWSE_RATE = Number(need('BROWSE_RATE')); // 混合读流量(列表/商品/库存;0=关)
 
-// ---- 内置默认（种子环境专用，一般不改）----
-const ACTIVITY_NO = 'LT-LOADTEST-001';
-const USER_COUNT = 80000;
-const USER_PREFIX = 'lt';
-const USER_PASSWORD = '123456';
-const BROWSE_RATE = cfgNum('BROWSE_RATE', 0); // 混合读流量（列表/商品/库存）；-e BROWSE_RATE=300 开启
+// 就绪与运行节奏(全部来自 deploy/.env;缺项报错)
+const SETUP_TIMEOUT = need('SETUP_TIMEOUT');                     // k6 setup 超时(如 25m)
+const READY_TIMEOUT_MS = Number(need('READY_TIMEOUT_S')) * 1000; // 就绪等待上限
+const PROBE_INTERVAL_S = Number(need('PROBE_INTERVAL_S'));       // 就绪探测间隔(秒)
+const ITER_SLEEP_S = Number(need('ITER_SLEEP_S'));               // 迭代尾部休眠:同用户请求间隔 >1s(令牌桶)
+const SAMPLE_POLL_RATE = Number(need('SAMPLE_POLL_RATE'));       // 未支付样本的终态抽查比例
+const POLL_WAIT_S = Number(need('POLL_WAIT_S'));                 // 抽查前的等待(留给 processor 消费)
+const ORDER_WAIT_MS = Number(need('ORDER_WAIT_MS'));             // 支付前等待出单的上限(毫秒)
+const ORDER_POLL_S = Number(need('ORDER_POLL_S'));               // 等出单的轮询间隔(秒)
+const BROWSE_PRE_VUS = Number(need('BROWSE_PRE_VUS'));           // browse 场景预分配 VU
+const BROWSE_MAX_VUS = Number(need('BROWSE_MAX_VUS'));           // browse 场景最大 VU
 
-// 就绪探测与运行节奏
-const READY_TIMEOUT_MS = 20 * 60 * 1000; // 就绪等待上限
-const PROBE_INTERVAL_S = 10;    // 就绪探测间隔（秒）
-const ITER_SLEEP_S = 1.2;       // 迭代尾部休眠：同用户请求间隔 >1s（令牌桶）
-const SAMPLE_POLL_RATE = 0.01;  // 未支付样本的终态抽查比例
-const POLL_WAIT_S = 2;          // 抽查前的等待（留给 processor 消费）
-const ORDER_WAIT_MS = 3000;     // 支付前等待出单的上限
-const ORDER_POLL_S = 0.3;       // 等出单的轮询间隔
-
-// 压测 SKU（initdb 种子，各 100 万库存）+ 秒杀价（支付回调金额核对用）
-const SKU_LIST = [
-  '2752035979942170624', // 茅台 单瓶
-  '2752035988330778626', // 大米 5kg
-  '2752035996719386628', // 褚橙 5kg
-  '2752036013496602632', // 安踏 42码
-  '2752036047051034640', // 小米 标准版
-  '2752036055439642642', // 三只松鼠 8袋装
-];
-const SKU_PRICE_MAP = {
-  '2752035979942170624': '2399.00',
-  '2752035988330778626': '69.00',
-  '2752035996719386628': '88.00',
-  '2752036013496602632': '399.00',
-  '2752036047051034640': '1199.00',
-  '2752036055439642642': '99.00',
-};
+// 压测 SKU 与价格(来源 deploy/.env 的 SECKILL_SKUS,格式 skuNo:价格,逗号分隔)
+const SKU_LIST = [];
+const SKU_PRICE_MAP = {};
+need('SECKILL_SKUS').split(',').forEach((item) => {
+  const [sku, price] = item.trim().split(':');
+  if (sku) {
+    SKU_LIST.push(sku);
+    SKU_PRICE_MAP[sku] = price || '0';
+  }
+});
 
 // ============================================================
 // 二、自定义指标
@@ -145,7 +143,7 @@ const browseFail = new Counter('browse_fail');
 // ============================================================
 
 export const options = {
-  setupTimeout: '25m', // 就绪等待（≤20m）+ 批量登录
+  setupTimeout: SETUP_TIMEOUT,
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   scenarios: {
     // 核心：恒定 SECKILL_RATE/s 秒杀提交
@@ -154,7 +152,7 @@ export const options = {
       rate: SECKILL_RATE,
       timeUnit: '1s',
       duration: DURATION,
-      preAllocatedVUs: PRE_VUS, // 服务器压测值（3000/s 实测需 ~4500+ VU）；本地联调用 -e PRE_VUS=800 调小
+      preAllocatedVUs: PRE_VUS, // deploy/.env【C】区;需 ≥ 速率×迭代时长
       maxVUs: USER_COUNT, // 与账号 1:1，用户不重复
     },
     // 混合读流量（BROWSE_RATE=0 时自动禁用）
@@ -166,8 +164,8 @@ export const options = {
             rate: BROWSE_RATE,
             timeUnit: '1s',
             duration: DURATION,
-            preAllocatedVUs: 20,
-            maxVUs: 100,
+            preAllocatedVUs: BROWSE_PRE_VUS,
+            maxVUs: BROWSE_MAX_VUS,
           },
         }
       : {}),
@@ -199,11 +197,11 @@ function waitUntilReady() {
   for (let round = 1; Date.now() < deadline; round++) {
     let stock = -1;
     try {
-      stock = http.get(`${BASE_URL}/api/c/activity/${ACTIVITY_NO}/sku/${probeSku}/stock`).json().data;
+      stock = http.get(`${BASE_URL}/api/c/activity/${ACTIVITY_NO}/sku/${probeSku}/stock`, { timeout: '10s' }).json().data;
     } catch (e) { /* 接口未就绪 */ }
     let status = '';
     try {
-      status = String(http.get(`${BASE_URL}/api/c/activity/${ACTIVITY_NO}`).json().data.activityStatus);
+      status = String(http.get(`${BASE_URL}/api/c/activity/${ACTIVITY_NO}`, { timeout: '10s' }).json().data.activityStatus);
     } catch (e) { /* 接口未就绪 */ }
     if (stock > 0 && status === 'ACTIVE') {
       console.log(`[就绪] 预热完成：库存=${stock}，活动=ACTIVE（第 ${round} 次探测）`);
@@ -225,7 +223,7 @@ function ensureToken(i) {
   const res = http.post(
     `${BASE_URL}/api/c/user/login`,
     JSON.stringify({ username: accountName(i % USER_COUNT), password: USER_PASSWORD }),
-    { headers: { 'Content-Type': 'application/json' }, tags: { name: 'login' } }
+    { headers: { 'Content-Type': 'application/json' }, tags: { name: 'login' }, timeout: '15s' }
   );
   let token = null;
   try { token = res.json().data.token; } catch (e) { /* 解析失败按登录失败处理 */ }
@@ -257,7 +255,7 @@ function waitOrderNo(traceId, token) {
   while (Date.now() < deadline) {
     const res = http.get(
       `${BASE_URL}/api/c/seckill/poll?traceId=${encodeURIComponent(traceId)}`,
-      { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'seckill_poll' } }
+      { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'seckill_poll' }, timeout: '15s' }
     );
     try {
       const vo = res.json().data;
@@ -288,7 +286,7 @@ function simulatePay(seckillRes, token, skuNo) {
   const prepay = http.post(
     `${BASE_URL}/api/c/pay/prepay?orderNo=${encodeURIComponent(orderNo)}&channel=mock`,
     null,
-    { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'pay_prepay' } }
+    { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'pay_prepay' }, timeout: '15s' }
   );
   const prepayCode = bizCode(prepay);
   payBiz.add(1, { step: 'prepay', code: prepayCode });
@@ -299,7 +297,7 @@ function simulatePay(seckillRes, token, skuNo) {
     const form = { out_trade_no: orderNo, trade_status: 'PAID' };
     const amount = SKU_PRICE_MAP[skuNo];
     if (amount) form.total_amount = amount;
-    callbackCode = bizCode(http.post(`${BASE_URL}/api/c/pay/callback/mock`, form, { tags: { name: 'pay_callback' } }));
+    callbackCode = bizCode(http.post(`${BASE_URL}/api/c/pay/callback/mock`, form, { tags: { name: 'pay_callback' }, timeout: '15s' }));
     payBiz.add(1, { step: 'callback', code: callbackCode });
   }
 
@@ -316,7 +314,7 @@ function samplePollFinal(res, token) {
   sleep(POLL_WAIT_S);
   const poll = http.get(
     `${BASE_URL}/api/c/seckill/poll?traceId=${encodeURIComponent(traceId)}`,
-    { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'seckill_poll_final' } }
+    { headers: { Authorization: `Bearer ${token}` }, tags: { name: 'seckill_poll_final' }, timeout: '15s' }
   );
   let status = `poll_http_${poll.status}`;
   try { status = String(poll.json().data && poll.json().data.status); } catch (e) { /* 忽略 */ }
@@ -341,7 +339,7 @@ export default function () {
   const res = http.post(
     `${BASE_URL}/api/c/seckill`,
     JSON.stringify({ activityNo: ACTIVITY_NO, skuNo, quantity: 1 }),
-    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
+    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, timeout: '15s' }
   );
   const ok = recordSeckillResult(res);
 
@@ -364,5 +362,5 @@ export function browseFn() {
   } else {
     url = `${BASE_URL}/api/c/activity/${ACTIVITY_NO}/sku/${SKU_LIST[Math.floor(Math.random() * SKU_LIST.length)]}/stock`;
   }
-  if (http.get(url).status !== 200) browseFail.add(1);
+  if (http.get(url, { timeout: '15s' }).status !== 200) browseFail.add(1);
 }

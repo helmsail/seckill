@@ -8,16 +8,18 @@ import lombok.extern.slf4j.Slf4j;
  * ── 64 位结构 ──────────────────────────────────────────────
  *   1  位  符号位（恒 0，保证正数）
  *   41 位  毫秒时间戳（相对 EPOCH，可用约 69 年）
- *   10 位  机器 ID（取宿主 IP 第四段）
+ *   10 位  机器 ID（SNOWFLAKE_MACHINE_ID 显式覆盖；缺省取宿主 IP 第四段）
  *   12 位  毫秒内序列（单机每毫秒 4096 个）
  *
  * ── 生成规则 ───────────────────────────────────────────────
  *   同一毫秒：序列 +1，溢出则自旋等到下一毫秒；跨入新毫秒：序列归零；
  *   时钟回拨：≤5ms 等待自愈，>5ms 拒绝生成（宁失败，不产重复 ID）。
  *
- * ── 机器号派生（单来源）──────────────────────────────────
- *   读取环境变量 HOST_IP（部署时按台注入的宿主内网 IP），取 IPv4 第四段；
- *   缺失/非法则拒绝生成（fail-fast，不静默兜底）。
+ * ── 机器号派生（两级）──────────────────────────────────
+ *   1) 显式覆盖：环境变量 SNOWFLAKE_MACHINE_ID（0..255；同机多实例部署时必须显式区分，
+ *      否则同机双实例 HOST_IP 相同，同一毫秒各自序列会发出重复 ID）；显式设置但非法 → fail-fast；
+ *   2) 默认派生：读取环境变量 HOST_IP（部署时按台注入的宿主内网 IP），取 IPv4 第四段；
+ *      缺失/非法则拒绝生成（fail-fast，不静默兜底）。
  *
  * 静态单例：全 JVM 唯一实例，类加载时完成机器号派生；
  * 序列推进在实例内互斥（synchronized），保证并发下 ID 不重不漏。
@@ -121,12 +123,23 @@ public final class SnowflakeIdGenerator {
 
     private static final String ENV_HOST_IP = "HOST_IP";
 
+    private static final String ENV_MACHINE_ID = "SNOWFLAKE_MACHINE_ID";
+
     /**
-     * 机器号派生（0..255）：读取部署注入的 HOST_IP，取 IPv4 第四段。
-     * Docker 部署下 HOST_IP 按台注入（宿主内网 IP），单网段内第四段互异即跨机唯一；
-     * 缺失或非法即抛异常（fail-fast，不静默兜底）。
+     * 机器号解析（0..255）：
+     * 1) SNOWFLAKE_MACHINE_ID 显式覆盖优先（同机多实例部署场景；显式非法即 fail-fast）；
+     * 2) 否则取 HOST_IP 的 IPv4 第四段；缺失或非法即抛异常（fail-fast，不静默兜底）。
      */
     private static long resolveMachineId() {
+        String override = System.getenv(ENV_MACHINE_ID);
+        if (override != null && !override.isBlank()) {
+            Long machineId = parseMachineId(override);
+            if (machineId == null) {
+                throw new IllegalStateException("机器号覆盖非法： " + ENV_MACHINE_ID + " -> " + override);
+            }
+            log.info("机器号来源: {}（{}）", ENV_MACHINE_ID, machineId);
+            return machineId;
+        }
         String ip = System.getenv(ENV_HOST_IP);
         Long machineId = ipSuffix(ip);
         if (machineId == null) {
@@ -134,6 +147,16 @@ public final class SnowflakeIdGenerator {
         }
         log.info("机器号来源: {}（{}） -> {}", ENV_HOST_IP, ip, machineId);
         return machineId;
+    }
+
+    /** 机器号 = 0..255 十进制字符串（显式覆盖用） */
+    private static Long parseMachineId(String value) {
+        try {
+            long id = Long.parseLong(value.trim());
+            return (id >= 0 && id <= 255) ? id : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** 机器号 = IPv4 第四段（"…216.102" → 102）：单网段部署下第四段互异即唯一 */

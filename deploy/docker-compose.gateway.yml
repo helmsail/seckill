@@ -1,14 +1,9 @@
-# 秒杀系统 · 服务器部署拆分（G1~G2 网关节点 · 4C8G ×2，每台各起一份）——gateway
+# 秒杀系统 · 单实例分解部署(v4 · 2026-10-08)——gateway 独占(4C8G;IP 由 .env HOST_IP 注入)
 #
-# 【N 拓扑说明】13 台实测收敛版（按比例激进合并）：
-#   - gateway 总需求 ~7.4 核 @5000 极限（4000 生产档每台 74%，定位见 docs），拆 2 个实例摊到 2 台 4C8G；
-#   - web（nginx，位于 D1 台）通过 upstream 把 /api 流量负载均衡到 2 台网关
-#     （见 deploy/nginx.conf，部署时填本组 2 台内网 IP）；
-#   - Sentinel 按"每实例"独立计数：阈值 = 总目标 ÷ 实例数，通过 GATEWAY_QPS_* 注入
-#     （2 实例 → 交易 3000 / 读 6000 / 运营端 500；总容量变化时同步调整）。
-#
-# 启动（每台各执行）：docker compose -f docker-compose.gateway.yml up -d
-# 更新：docker compose -f docker-compose.gateway.yml pull && docker compose -f docker-compose.gateway.yml up -d
+# 【一组件一机】单实例统一入口(web 的 nginx upstream 指向本机:18080);
+#   - 限流阈值=单实例口径(.env ⑥;交易 4000 留 33% 余量,避免 3000 档误伤);
+#   - JVM 堆 2g + 直接内存 768m(按 4C8G 机器适配)。
+# 启动:docker compose -f docker-compose.gateway.yml up -d
 name: seckill-gateway
 
 services:
@@ -16,18 +11,17 @@ services:
   seckill-gateway:
     image: ${IMAGE_REGISTRY}/seckill-gateway:${IMAGE_TAG}
     container_name: seckill-gateway
-    cpus: 4
+    cpus: 3.5
     restart: unless-stopped
     env_file: .env
     environment:
-      # 堆与直接内存上限（默认值；要调整在 .env ⑤ 区设 GATEWAY_JAVA_OPTS 覆盖）
-      # 单 JVM 独占整机留 0.5 核给系统：堆显式 3g（WebFlux 异步）；
-      # Netty 网络缓冲走直接内存，显式 1g 上限防止虚占（不配则按堆上限预留）
-      JAVA_TOOL_OPTIONS: "${GATEWAY_JAVA_OPTS:--Xms3g -Xmx3g -XX:MaxDirectMemorySize=1g}"
-      # 每实例限流阈值（总目标 ÷ 实例数；默认值 3000/6000 对应 2 实例形态）
-      GATEWAY_QPS_SERVICE: ${GATEWAY_QPS_SERVICE:-3000}
-      GATEWAY_QPS_READ: ${GATEWAY_QPS_READ:-6000}
-      GATEWAY_QPS_ADMIN: ${GATEWAY_QPS_ADMIN:-500}
+      JAVA_TOOL_OPTIONS: "${GATEWAY_JAVA_OPTS}"
+      GATEWAY_QPS_SERVICE: ${GATEWAY_QPS_SERVICE}
+      GATEWAY_QPS_READ: ${GATEWAY_QPS_READ}
+      GATEWAY_QPS_ADMIN: ${GATEWAY_QPS_ADMIN}
     ports:
-      # 直连入口（调试/单实例压测用）；对外浏览器流量统一走 web(18087)
       - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+
+networks:
+  default:
+    name: seckill-net

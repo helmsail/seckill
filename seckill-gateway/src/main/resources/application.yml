@@ -76,9 +76,9 @@ spring:
 gateway:
   ratelimit:
     qps:
-      admin: ${GATEWAY_QPS_ADMIN:500}
-      service: ${GATEWAY_QPS_SERVICE:6000}
-      service-read: ${GATEWAY_QPS_READ:12000}
+      admin: ${GATEWAY_QPS_ADMIN}
+      service: ${GATEWAY_QPS_SERVICE}
+      service-read: ${GATEWAY_QPS_READ}
 
 # ---------- JWT（与 support-server 保持同一 secret，令牌由 support-server 签发）----------
 jwt:

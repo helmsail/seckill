@@ -1,17 +1,8 @@
-# 秒杀系统 · 服务器部署拆分（S1~S3 业务服务节点 · 4C8G ×3，每台各起一份）——service
+# 秒杀系统 · 单实例分解部署(v4 · 2026-10-08)——service 独占(4C8G · service-1/2 两台)
 #
-# 【N 拓扑说明】按本地实测比例收敛（service≈24%，吞吐大头）：~9.3 核 @5000 极限，拆 3 个实例
-# （@4000 生产档每台 62%），任一实例故障仅损失 1/3 容量，扩容即加机器复制本文件；
-#   - web（nginx，D1 台）→ G1~G2 网关 → 经 Nacos 服务发现按
-#     SPRING_CLOUD_NACOS_DISCOVERY_IP 负载均衡到 3 个 service 实例。
-#
-# 启动（每台各执行）：docker compose -f docker-compose.service.yml up -d        （镜像从 .env 的 IMAGE_REGISTRY 拉取）
-# 更新：docker compose -f docker-compose.service.yml pull && docker compose -f docker-compose.service.yml up -d
-#
-# 必要项提示（勿删）：
-#   - SPRING_CLOUD_NACOS_DISCOVERY_IP=宿主内网 IP：网关按此地址负载均衡到本实例；
-#   - DUBBO_IP_TO_REGISTRY=宿主内网 IP：Dubbo 调用同样不能注册容器内网 IP；
-#   - 单 JVM 独占整机：堆用默认（≈机器内存 1/4），压测暴露不足再显式调
+# 【一组件一机】交易核心(热链路):4C8G 为标定起点,瓶颈即加实例;
+#   - JVM 堆 2g(沿用);注册/对外地址用宿主内网 IP。
+# 启动:docker compose -f docker-compose.service.yml up -d
 name: seckill-service
 
 services:
@@ -23,7 +14,13 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      # 负载均衡:回默认(random)——经 per-host 语句分账实测,流量本就 1:1("偏斜"系 GC 脉冲误读),无需策略干预;策略级固化(如需)留待代码注解
+      JAVA_TOOL_OPTIONS: "${SERVICE_JAVA_OPTS}"
       SPRING_CLOUD_NACOS_DISCOVERY_IP: ${HOST_IP}
       DUBBO_IP_TO_REGISTRY: ${HOST_IP}
     ports:
       - "${SERVICE_PORT}:${SERVICE_PORT}"
+
+networks:
+  default:
+    name: seckill-net

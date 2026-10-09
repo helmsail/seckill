@@ -1,0 +1,29 @@
+# 秒杀系统 · v6.1(2026-10-09)——Redis 独立(standby 机启用;IP 由 .env HOST_IP 注入)
+#
+# 【一组件一机】从 mixRS 拆出(压测定位:redis 单线程队列 + 与 support 抢核,压测中 PING avg 1.44ms/max 7ms):
+#   - cpus 3.5(原 mixRS 内限 1.2 核太紧,独立后放开——单线程主线程 + IO 线程有充分调度空间);
+#   - 参数保持与 mixRS 时代一致:仅 --appendonly yes,其余全走 redis 默认;
+#   - 无数据卷(压测语义):`down && up` 即重置为空库;活动缓存/库存键由 job 预热任务自动重建
+#     (⚠️ 预热只在活动 PENDING 时进行——重置 redis 须连同 mysql 一起 down/up,让活动全新开始)。
+# 启动:docker compose -f docker-compose.redis.yml up -d
+name: seckill-redis
+
+services:
+
+  redis:
+    image: ${IMAGE_REGISTRY}/redis:7-alpine
+    container_name: seckill-redis
+    cpus: 3.5
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  default:
+    name: seckill-net

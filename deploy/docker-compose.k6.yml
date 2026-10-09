@@ -1,0 +1,18 @@
+# 秒杀系统 · 压测机 k6 编排(一次性任务容器;由 scripts/bench.py 自动推送与调用)
+#
+# 【用法】压测机 /root/k6 目录下:
+#   docker compose -f docker-compose.k6.yml run --rm k6 run -e SECKILL_RATE=4000 -e DURATION=2m /scripts/seckill-loadtest.js
+# 【要点】
+#   - network_mode: host —— bridge 网络容器端口池仅 ~2.8 万,高 VU 必爆(cannot assign requested address);
+#   - 挂载 ./ → /scripts(k6 机 /root/k6 即脚本目录);
+#   - 镜像取自同目录 .env 的 IMAGE_REGISTRY(k6 脚本也读取该 .env;由 bench.py 自动推送)。
+# 前置:sysctl 端口调优 + docker login ACR —— bench.py 每次压测前幂等执行。
+name: seckill-k6
+
+services:
+  k6:
+    image: ${IMAGE_REGISTRY}/k6:latest
+    network_mode: host
+    volumes:
+      - ./:/scripts
+    working_dir: /scripts

@@ -1,16 +1,18 @@
-# 秒杀系统全容器化编排（开发/演示）
+# 秒杀系统 · 本地一键环境（单机全组件 · 每组件一个实例）
 #
+# 与云端 deploy/ 多机编排同源:同样的组件、同样的 .env 键;区别只在"一台机器"。
+# 配置唯一来源 = 项目根 .env(compose 自动读取;compose 内不保留默认值):
+#   - 地址 = 容器服务名;镜像 = 本地构建;应用参数由 env_file 注入。
 # ========== 前置步骤 ==========
 #   1. mvn package -DskipTests                 （生成各服务可执行 jar）
-#   2. cp .env.example .env                    （按需修改密码等变量）
-#   3. docker compose up -d --build            （首次启动自动初始化 MySQL：建库建表 + xxl-job 表结构与任务预置，见 deploy/initdb/）
+#   2. cp .env.example .env                    （按需修改变量;唯一配置源）
+#   3. docker compose up -d --build            （首次启动自动初始化 MySQL：建库建表 + xxl-job 预置，见 deploy/initdb/）
 #
 # ========== 端口（宿主）==========
 #   gateway 18080 | base 18081 | admin 18082 | job 18083 | service 18084 | processor 18085 | support 18086 | web 18087
 #   xxl-job-admin 8080 | nacos 8848/9848 | sentinel-dashboard 8858 | mysql 3306 | redis 6379 | rocketmq 9876/10911
 #
-# 说明：应用容器通过 env_file 注入 .env；中间件配置直接使用 .env 变量替换（compose 自动读取项目根 .env）
-# 数据策略：数据全部存放容器内部（不挂外部卷）——stop/restart 保留数据，容器删除（down/重建）即重置
+# 数据策略：数据全部存放容器内部（不挂外部卷）——stop/restart 保留数据，容器删除（down/重建）即重置。
 
 name: seckill
 
@@ -23,12 +25,12 @@ services:
     container_name: seckill-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: seckill
       TZ: Asia/Shanghai
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT}:3306"
     volumes:
       # 首次初始化（数据目录为空时执行）：唯一来源 deploy/initdb（建库建表 + xxl-job 初始化，按字母序执行）
       - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
@@ -43,7 +45,7 @@ services:
     container_name: seckill-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
@@ -60,8 +62,8 @@ services:
       NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN}
       NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY}
       NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE}
-      JVM_XMS: 256m
-      JVM_XMX: 512m
+      JVM_XMS: ${NACOS_JVM_XMS}
+      JVM_XMX: ${NACOS_JVM_XMX}
     ports:
       - "8848:8848"
       - "9848:9848"
@@ -74,7 +76,7 @@ services:
     restart: unless-stopped
     command: sh mqnamesrv
     environment:
-      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+      JAVA_OPT_EXT: "${NAMESRV_JAVA_OPT_EXT}"
     ports:
       - "9876:9876"
 
@@ -88,7 +90,7 @@ services:
     depends_on:
       - rocketmq-namesrv
     environment:
-      JAVA_OPT_EXT: "-Xms512m -Xmx512m"
+      JAVA_OPT_EXT: "${BROKER_JAVA_OPT_EXT}"
     ports:
       - "10909:10909"
       - "10911:10911"
@@ -103,15 +105,15 @@ services:
       TZ: Asia/Shanghai
       # accessToken 置空与项目 executor 保持一致；未导入 xxl_job 表前会反复重启（导入后自动恢复）
       PARAMS: >-
-        --spring.datasource.url=jdbc:mysql://mysql:3306/xxl_job?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
-        --spring.datasource.username=${MYSQL_USERNAME:-root}
-        --spring.datasource.password=${MYSQL_PASSWORD:-root}
+        --spring.datasource.url=jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/xxl_job?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+        --spring.datasource.username=${MYSQL_USERNAME}
+        --spring.datasource.password=${MYSQL_PASSWORD}
         --xxl.job.accessToken=
     depends_on:
       mysql:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${XXL_ADMIN_PORT}:8080"
 
   sentinel-dashboard:
     # 社区镜像；若拉取失败可注释本服务（同步删去 gateway 的 sentinel-dashboard 依赖，否则 compose 报 depends on undefined service； gateway 连不上 dashboard 不影响运行）
@@ -120,9 +122,9 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
-      JAVA_OPTS: "-Dserver.port=8858 -Dcsp.sentinel.dashboard.server=localhost:8858 -Dproject.name=sentinel-dashboard"
+      JAVA_OPTS: "${SENTINEL_JAVA_OPTS} -Dserver.port=${SENTINEL_PORT} -Dcsp.sentinel.dashboard.server=localhost:${SENTINEL_PORT} -Dproject.name=sentinel-dashboard"
     ports:
-      - "8858:8858"
+      - "${SENTINEL_PORT}:${SENTINEL_PORT}"
 
   # ==================== 应用服务（先 mvn package 再 --build）====================
 
