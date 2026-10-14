@@ -20,7 +20,7 @@ services:
       JAVA_TOOL_OPTIONS: "${BASE_JAVA_OPTS} -Dlog4j2.configurationFile=file:/app/log4j2-quiet.xml -Xlog:gc*:file=/app/gc.log:time,uptime:filecount=2,filesize=20m"
       # Hikari 连接池参数在 shardingsphere-sharding.yaml(jar 内):v2.1 起 maximumPoolSize=50
       # （实测默认 10 时高并发下 214 线程排队等连接 → p99 15s；扩容后 p99 降至 3.3s）
-      # 🧊 显式雪花机器号(0..255;与 IP 第四段无关)
+      # 🧊 显式雪花机器号(0..255;全集群同时刻互异)
       SNOWFLAKE_MACHINE_ID: ${BASE1_SNOWFLAKE_ID}
       DUBBO_IP_TO_REGISTRY: ${HOST_IP}
     volumes:

@@ -16,6 +16,8 @@ services:
     env_file: .env
     environment:
       JAVA_TOOL_OPTIONS: "${SUPPORT_JAVA_OPTS}"
+      # 🧊 雪花机器号:手动分配(0..255,全集群同时刻互异;缺失/非法启动即失败)
+      SNOWFLAKE_MACHINE_ID: ${SUPPORT_SNOWFLAKE_ID}
       DUBBO_IP_TO_REGISTRY: ${HOST_IP}
     ports:
       - "${SUPPORT_PORT}:${SUPPORT_PORT}"

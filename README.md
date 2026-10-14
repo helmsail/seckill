@@ -118,7 +118,7 @@ mvn package -DskipTests
 # 2. 准备配置(唯一配置源);Windows 用 copy .env.example .env
 cp .env.example .env
 #    必填四项:
-#      HOST_IP=<本机内网 IPv4(XXL 执行器回调与雪花机器号依据)>
+#      HOST_IP=<本机内网 IPv4(XXL 执行器回调依据)>
 #      MYSQL_PASSWORD=<自定义>
 #      JWT_SECRET=<任意足够长随机串>
 #      NACOS_AUTH_TOKEN=<openssl rand -base64 48 生成(须 ≥32 字节)>
@@ -215,7 +215,9 @@ python scripts/check_docker.py      # 查看各机 Docker 状态
 
 ```bash
 # ============ 【A】本机标识与运行(HOST_IP 必填) ============
-HOST_IP=                          # 本机内网 IPv4;XXL 执行器回调地址与雪花机器号的派生依据
+HOST_IP=                          # 本机内网 IPv4;XXL 执行器回调地址依据
+BASE1_SNOWFLAKE_ID=106            # 雪花机器号:手动分配(0..255,全集群互异;缺失/非法启动即报错)
+SUPPORT_SNOWFLAKE_ID=200          # 同上;support 实例
 JAVA_TOOL_OPTIONS=-Xms128m -Xmx384m   # 应用统一 JVM 堆(本地 8G 环境建议值)
 
 # ============ 【B】凭据(建议全部自定义) ============

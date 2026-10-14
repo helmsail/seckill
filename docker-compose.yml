@@ -150,6 +150,8 @@ services:
     container_name: seckill-base
     restart: unless-stopped
     env_file: .env
+    environment:
+      SNOWFLAKE_MACHINE_ID: ${BASE1_SNOWFLAKE_ID}
     depends_on:
       mysql:
         condition: service_healthy
@@ -232,6 +234,8 @@ services:
     container_name: seckill-support
     restart: unless-stopped
     env_file: .env
+    environment:
+      SNOWFLAKE_MACHINE_ID: ${SUPPORT_SNOWFLAKE_ID}
     depends_on:
       mysql:
         condition: service_healthy
