@@ -1,4 +1,4 @@
-package com.helmsail.seckill.common.dubbo;
+package com.helmsail.seckill.common.tracing.dubbo;
 
 import com.helmsail.seckill.common.exception.BizException;
 import lombok.extern.slf4j.Slf4j;

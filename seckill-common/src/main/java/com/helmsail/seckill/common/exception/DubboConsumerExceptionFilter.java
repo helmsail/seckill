@@ -1,6 +1,5 @@
-package com.helmsail.seckill.common.dubbo;
+package com.helmsail.seckill.common.exception;
 
-import com.helmsail.seckill.common.exception.BizException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.common.constants.CommonConstants;
 import org.apache.dubbo.common.extension.Activate;
