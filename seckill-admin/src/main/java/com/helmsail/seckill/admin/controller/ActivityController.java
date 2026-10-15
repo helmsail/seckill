@@ -2,36 +2,81 @@ package com.helmsail.seckill.admin.controller;
 
 import com.helmsail.seckill.admin.vo.ActivityDetailVO;
 import com.helmsail.seckill.base.activity.*;
+import com.helmsail.seckill.base.productsku.AddSeckillProductSkuRequest;
+import com.helmsail.seckill.base.productsku.RemoveSeckillProductSkuRequest;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDTO;
 import com.helmsail.seckill.base.productsku.SeckillProductSkuDubboService;
+import com.helmsail.seckill.base.productsku.ShelfSeckillProductSkuRequest;
+import com.helmsail.seckill.base.result.SeckillResultEnum;
+import com.helmsail.seckill.common.exception.BizException;
 import com.helmsail.seckill.common.result.Result;
+import com.helmsail.seckill.common.result.ResultEnum;
+import com.helmsail.seckill.support.api.sku.SkuDubboService;
+import com.helmsail.seckill.support.api.sku.StockChangeItem;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.apache.dubbo.config.annotation.Method;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
- * 活动管理 Controller
+ * 活动管理 Controller：活动的管理与配置与选品
+ *
+ * 统一承载活动域在管理端的两类用例（原 ActivityController 与 ProductSkuController 合并）：
+ * - 活动本身：创建/更新/删除/查询与生命周期流转（暂停/继续/关闭）；
+ * - 活动选品（批量添加/移除/上下架）：跨域写编排——主域库存（support）与秒杀域配置（base）
+ *   各以"域内单事务"保证批次全成全败；编排层只处理两段事务之间的失败裁决：
+ *     - 确认失败（异常链含 BizException，事务已回滚=零副作用）→ 定向补偿/归还，可安全重试；
+ *     - 未知结果（超时等，事务结果不可知）→ 不动作、查证或记日志转人工核对。
+ *
+ * URL 保持原路径（/activity 与 /product-sku 两个前缀），前端无需改动。
  */
+@Slf4j
 @RestController
-@RequestMapping("/activity")
 @RequiredArgsConstructor
 public class ActivityController {
+
+    /** 归还重试上限：仅"确认失败"可重试（事务回滚=零副作用）；超时不可重试 */
+    private static final int RESTORE_MAX_ATTEMPTS = 3;
+
+    /** 归还重试间隔（毫秒） */
+    private static final long RESTORE_RETRY_INTERVAL_MS = 200L;
 
     /** 仅 create 禁重试（不幂等：重试 = 重复创建）；其余方法效果幂等/CAS 安全，允许默认重试 */
     @DubboReference(methods = @Method(name = "create", retries = 0))
     private ActivityDubboService activityService;
 
-    @DubboReference
+    /**
+     * batchAdd/batchRemove 禁重试：超时=未知结果，须留给编排层查证恢复（重试的第二次会变成
+     * 业务假失败、绕过查证路径）；batchShelf 幂等（set 语义），允许默认重试
+     */
+    @DubboReference(methods = {
+            @Method(name = "batchAdd", retries = 0),
+            @Method(name = "batchRemove", retries = 0)
+    })
     private SeckillProductSkuDubboService seckillProductSkuService;
+
+    /** 写：批量扣减/归还非幂等，方法级禁重试；读方法走引用默认 */
+    @DubboReference(methods = {
+            @Method(name = "batchDeductStock", retries = 0),
+            @Method(name = "batchAddStock", retries = 0)
+    })
+    private SkuDubboService skuService;
+
+    // ==================== 活动管理 ====================
 
     /**
      * 创建活动
      */
-    @PostMapping
+    @PostMapping("/activity")
     public Result<String> create(@Valid @RequestBody ActivityRequest request) {
         return Result.success(activityService.create(request));
     }
@@ -39,7 +84,7 @@ public class ActivityController {
     /**
      * 删除活动（仅待开始状态）
      */
-    @DeleteMapping("/{activityNo}")
+    @DeleteMapping("/activity/{activityNo}")
     public Result<Void> delete(@PathVariable String activityNo) {
         activityService.delete(activityNo);
         return Result.success();
@@ -48,7 +93,7 @@ public class ActivityController {
     /**
      * 修改活动（仅待开始状态）
      */
-    @PutMapping("/{activityNo}")
+    @PutMapping("/activity/{activityNo}")
     public Result<Void> update(@PathVariable String activityNo, @Valid @RequestBody ActivityRequest request) {
         activityService.update(activityNo, request);
         return Result.success();
@@ -57,7 +102,7 @@ public class ActivityController {
     /**
      * 查询单个活动
      */
-    @GetMapping("/{activityNo}")
+    @GetMapping("/activity/{activityNo}")
     public Result<ActivityDTO> getByActivityNo(@PathVariable String activityNo) {
         return Result.success(activityService.getByActivityNo(activityNo));
     }
@@ -65,7 +110,7 @@ public class ActivityController {
     /**
      * 查询活动详情（活动 + 秒杀域 SKU 平铺列表；SPU 分组塑形由前端完成）
      */
-    @GetMapping("/{activityNo}/detail")
+    @GetMapping("/activity/{activityNo}/detail")
     public Result<ActivityDetailVO> detail(@PathVariable String activityNo) {
         ActivityDTO activity = activityService.getByActivityNo(activityNo);
         List<SeckillProductSkuDTO> skus = seckillProductSkuService.listByActivityNo(activityNo);
@@ -75,7 +120,7 @@ public class ActivityController {
     /**
      * 查询活动列表（status 为空时全量，否则按状态过滤）
      */
-    @GetMapping("/list")
+    @GetMapping("/activity/list")
     public Result<List<ActivityDTO>> list(@RequestParam(required = false) ActivityStatus status) {
         if (status == null) {
             return Result.success(activityService.listAll());
@@ -86,7 +131,7 @@ public class ActivityController {
     /**
      * 暂停活动（进行中 → 已暂停）
      */
-    @PutMapping("/{activityNo}/pause")
+    @PutMapping("/activity/{activityNo}/pause")
     public Result<Void> pause(@PathVariable String activityNo) {
         activityService.pause(activityNo);
         return Result.success();
@@ -95,7 +140,7 @@ public class ActivityController {
     /**
      * 继续活动（已暂停 → 进行中）
      */
-    @PutMapping("/{activityNo}/resume")
+    @PutMapping("/activity/{activityNo}/resume")
     public Result<Void> resume(@PathVariable String activityNo) {
         activityService.resume(activityNo);
         return Result.success();
@@ -104,9 +149,288 @@ public class ActivityController {
     /**
      * 关闭活动（进行中/已暂停 → 已关闭）
      */
-    @PutMapping("/{activityNo}/close")
+    @PutMapping("/activity/{activityNo}/close")
     public Result<Void> close(@PathVariable String activityNo) {
         activityService.close(activityNo);
         return Result.success();
+    }
+
+    // ==================== 活动选品（批量） ====================
+
+    /**
+     * 批量添加到活动
+     *
+     * 编排：批量划拨主域库存（事务）→ 秒杀域批量落库（事务）；
+     * 落库确认失败 → 整批补偿归还；划拨超时 → 转人工；
+     * 落库超时 → 查证已落库则按成功返回，否则转人工。
+     */
+    @PostMapping("/product-sku")
+    public Result<Void> addSkus(@Valid @RequestBody AddSeckillProductSkuRequest request) {
+        String activityNo = request.getActivityNo();
+        List<StockChangeItem> stockItems = toStockItemsForDeduct(request.getItems());
+
+        // 阶段一：批量划拨（support 域内单事务：整批扣 / 零扣）
+        try {
+            skuService.batchDeductStock(stockItems);
+        } catch (Exception e) {
+            BizException biz = findBizException(e);
+            if (biz != null) {
+                // 确认失败：事务已回滚，零副作用，无需补偿
+                throw biz;
+            }
+            // 未知结果：可能已划拨（support 域无库存查询，无法查证），不动作、转人工
+            log.error("批量划拨库存结果未知，需人工审查: activityNo={}, items={}", activityNo, describe(stockItems), e);
+            throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(),
+                    "库存划拨结果未知，请人工核对主域库存后再决定是否重试");
+        }
+
+        // 阶段二：秒杀域批量落库（base 域内单事务：整批插 / 零插）
+        try {
+            seckillProductSkuService.batchAdd(request);
+        } catch (Exception e) {
+            BizException biz = findBizException(e);
+            if (biz != null) {
+                // 确认失败：零行落库 → 整批补偿归还，随后上抛原始业务错误
+                restoreStock(activityNo, stockItems, "添加失败补偿归还");
+                throw biz;
+            }
+            // 未知结果：查证已落库（提交可见=成功）则按成功返回，否则转人工
+            if (!verifyAdded(activityNo, stockItems)) {
+                log.error("秒杀域落库结果未知，需人工审查: activityNo={}, items={}", activityNo, describe(stockItems), e);
+                throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(),
+                        "落库结果未知，请人工核对活动商品后再决定是否重试");
+            }
+            log.warn("落库响应超时，查证确认已落库，按成功返回: activityNo={}, items={}",
+                    activityNo, describe(stockItems));
+        }
+        return Result.success();
+    }
+
+    /**
+     * 批量删除（物理删除，仅待开始状态）
+     *
+     * 编排：预读配额快照 → 秒杀域批量删除（事务）→ 批量归还主域（事务）。
+     * 确认失败 → 零删除直接报错；超时（未知）→ 查证行是否已删，
+     * 已删则按预读快照继续归还，否则转人工。
+     */
+    @PostMapping("/product-sku/remove")
+    public Result<Void> removeSkus(@Valid @RequestBody RemoveSeckillProductSkuRequest request) {
+        String activityNo = request.getActivityNo();
+        List<String> skuNos = request.getSkuNos();
+
+        // 预读：删除成功后行即消失、配额不可再查，预读快照是超时后恢复归还的唯一依据
+        List<StockChangeItem> preReadItems = preReadQuota(activityNo, skuNos);
+
+        // 阶段一：秒杀域批量删除（base 域内单事务：整批删 / 零删）
+        List<StockChangeItem> restoreItems;
+        try {
+            restoreItems = seckillProductSkuService.batchRemove(request).stream()
+                    .map(item -> new StockChangeItem(item.getSkuNo(), item.getStockToRestore()))
+                    .toList();
+        } catch (Exception e) {
+            BizException biz = findBizException(e);
+            if (biz != null) {
+                // 确认失败：事务已回滚，零删除，无需归还
+                throw biz;
+            }
+            // 未知结果：查证是否已删 —— 已删按预读快照继续归还；未删/读取失败转人工
+            restoreItems = verifyRemoved(activityNo, skuNos, preReadItems);
+            if (restoreItems == null) {
+                log.error("批量删除结果未知且查证未通过，需人工审查: activityNo={}, skuNos={}", activityNo, skuNos, e);
+                throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(),
+                        "删除结果未知，请人工核对活动商品后再决定是否重试");
+            }
+            log.warn("批量删除响应超时，查证确认已删除，按预读配额快照继续归还: activityNo={}, items={}",
+                    activityNo, describe(restoreItems));
+        }
+
+        // 阶段二：批量归还主域（support 域内单事务：整批还 / 零还）
+        restoreStock(activityNo, restoreItems, "删除归还");
+        return Result.success();
+    }
+
+    /**
+     * 批量上架/下架（活动非终态可用）
+     */
+    @PutMapping("/product-sku/shelf")
+    public Result<Void> updateShelfStatus(@Valid @RequestBody ShelfSeckillProductSkuRequest request) {
+        seckillProductSkuService.batchShelf(request);
+        return Result.success();
+    }
+
+    // ==================== 编排辅助 ====================
+
+    /**
+     * 添加请求 → 划拨清单（快速失败：空列表 / 缺 SKU 编号 / 库存非正，先于任何副作用）
+     */
+    private static List<StockChangeItem> toStockItemsForDeduct(List<AddSeckillProductSkuRequest.SkuConfig> items) {
+        if (items == null || items.isEmpty()) {
+            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "添加列表不能为空");
+        }
+        List<StockChangeItem> stockItems = new ArrayList<>(items.size());
+        for (AddSeckillProductSkuRequest.SkuConfig item : items) {
+            if (item == null || !StringUtils.hasText(item.getSkuNo())) {
+                throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "SKU 编号不能为空");
+            }
+            if (item.getActivityStock() == null || item.getActivityStock() <= 0) {
+                throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "活动库存必须大于 0: " + item.getSkuNo());
+            }
+            stockItems.add(new StockChangeItem(item.getSkuNo(), item.getActivityStock()));
+        }
+        return stockItems;
+    }
+
+    /**
+     * 预读待删 SKU 的配额快照；任一 SKU 不在活动中立即失败（与秒杀域删除的校验语义一致，零副作用）
+     */
+    private List<StockChangeItem> preReadQuota(String activityNo, List<String> skuNos) {
+        if (skuNos == null || skuNos.isEmpty()) {
+            throw new BizException(ResultEnum.PARAM_ERROR.getCode(), "删除列表不能为空");
+        }
+        Map<String, Integer> quotaMap = listActivitySkus(activityNo).stream().collect(Collectors.toMap(
+                SeckillProductSkuDTO::getSkuNo, SeckillProductSkuDTO::getActivityStock, (a, b) -> a));
+        List<StockChangeItem> items = new ArrayList<>(skuNos.size());
+        for (String skuNo : skuNos) {
+            Integer quota = quotaMap.get(skuNo);
+            if (quota == null) {
+                throw new BizException(SeckillResultEnum.SKU_NOT_FOUND.getCode(), "SKU 不在活动中: " + skuNo);
+            }
+            items.add(new StockChangeItem(skuNo, quota));
+        }
+        return items;
+    }
+
+    /**
+     * 读取活动 SKU 平铺列表（读操作异常裁决：业务异常原样上抛；技术异常包装为可重试提示）
+     */
+    private List<SeckillProductSkuDTO> listActivitySkus(String activityNo) {
+        try {
+            return seckillProductSkuService.listByActivityNo(activityNo);
+        } catch (Exception e) {
+            BizException biz = findBizException(e);
+            if (biz != null) {
+                throw biz;
+            }
+            log.error("读取活动商品失败: activityNo={}", activityNo, e);
+            throw new BizException(ResultEnum.SYSTEM_ERROR.getCode(), "读取活动商品失败，请稍后重试");
+        }
+    }
+
+    /**
+     * 落库超时查证：重读活动 SKU 列表判定落库是否已生效。
+     * 全部存在 = 已落库（提交可见，按成功返回）；有缺失 / 读取失败 = false（转人工）
+     */
+    private boolean verifyAdded(String activityNo, List<StockChangeItem> stockItems) {
+        List<SeckillProductSkuDTO> rows;
+        try {
+            rows = seckillProductSkuService.listByActivityNo(activityNo);
+        } catch (Exception e) {
+            log.error("落库超时后查证失败（读取活动商品异常）: activityNo={}", activityNo, e);
+            return false;
+        }
+        Set<String> currentSkuNos = rows.stream()
+                .map(SeckillProductSkuDTO::getSkuNo)
+                .collect(Collectors.toSet());
+        long missing = stockItems.stream()
+                .map(StockChangeItem::getSkuNo)
+                .filter(skuNo -> !currentSkuNos.contains(skuNo))
+                .count();
+        if (missing == 0) {
+            return true;
+        }
+        log.error("落库超时后查证发现 SKU 缺失（{}/{}），需人工核对: activityNo={}",
+                missing, stockItems.size(), activityNo);
+        return false;
+    }
+
+    /**
+     * 删除超时查证：重读活动 SKU 列表判定删除是否已生效。
+     * 全部消失 = 已删除（返回预读快照清单）；仍有残留 / 读取失败 = null（转人工）
+     */
+    private List<StockChangeItem> verifyRemoved(String activityNo, List<String> skuNos, List<StockChangeItem> preReadItems) {
+        List<SeckillProductSkuDTO> rows;
+        try {
+            rows = seckillProductSkuService.listByActivityNo(activityNo);
+        } catch (Exception e) {
+            log.error("删除超时后查证失败（读取活动商品异常）: activityNo={}, skuNos={}", activityNo, skuNos, e);
+            return null;
+        }
+        Set<String> currentSkuNos = rows.stream()
+                .map(SeckillProductSkuDTO::getSkuNo)
+                .collect(Collectors.toSet());
+        long remain = skuNos.stream().filter(currentSkuNos::contains).count();
+        if (remain == 0) {
+            return preReadItems;
+        }
+        log.error("删除超时后查证发现 SKU 仍在活动中（{}/{}），需人工核对: activityNo={}, skuNos={}",
+                remain, skuNos.size(), activityNo, skuNos);
+        return null;
+    }
+
+    /**
+     * 批量归还主域库存（support 域内单事务：整批还 / 零还）。
+     * 确认失败可安全重试（事务回滚=零副作用）；超时（未知结果）不重试，记日志转人工。
+     */
+    private void restoreStock(String activityNo, List<StockChangeItem> items, String scene) {
+        for (int attempt = 1; attempt <= RESTORE_MAX_ATTEMPTS; attempt++) {
+            try {
+                skuService.batchAddStock(items);
+                if (attempt > 1) {
+                    log.info("归还主域库存重试成功（第 {} 次）: scene={}, activityNo={}, items={}",
+                            attempt, scene, activityNo, describe(items));
+                }
+                return;
+            } catch (Exception e) {
+                boolean retryable = findBizException(e) != null;
+                log.error("归还主域库存失败（第 {}/{} 次, scene={}, activityNo={}, items={}, 可重试={}）",
+                        attempt, RESTORE_MAX_ATTEMPTS, scene, activityNo, describe(items), retryable, e);
+                if (!retryable) {
+                    // 超时（未知结果）：不重试，转人工
+                    return;
+                }
+                if (attempt == RESTORE_MAX_ATTEMPTS) {
+                    log.error("归还主域库存 {} 次尝试仍失败，需人工核对: scene={}, activityNo={}, items={}",
+                            RESTORE_MAX_ATTEMPTS, scene, activityNo, describe(items));
+                    return;
+                }
+                sleepQuietly(RESTORE_RETRY_INTERVAL_MS);
+            }
+        }
+    }
+
+    /**
+     * 日志用条目描述
+     */
+    private static String describe(List<StockChangeItem> items) {
+        if (items == null || items.isEmpty()) {
+            return "[]";
+        }
+        return items.stream()
+                .map(item -> item.getSkuNo() + ":" + item.getQuantity())
+                .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    /**
+     * 沿 cause 链查找 BizException（与 WebMvcExceptionHandler 的解包逻辑一致）：
+     * 找到 = 跨进程业务异常（确认失败，事务已回滚）；未找到 = 超时/网络类（未知结果）。
+     */
+    private static BizException findBizException(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof BizException bizException) {
+                return bizException;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return null;
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
