@@ -33,12 +33,6 @@ public final class SeckillRedisKey {
     /** 活动不存在负标记（回源确认不存在时写入，短 TTL 自清，跨实例短路回源；值="1"；标识：activityNo） */
     public static final String KEY_ACTIVITY_INFO_NULL = "seckill:activity:%s:info:null";
 
-    /** 活动商品为空负标记（回源确认无 SKU 时写入，短 TTL 自清，跨实例短路回源；值="1"；标识：activityNo） */
-    public static final String KEY_ACTIVITY_PRODUCT_NULL = "seckill:activity:%s:skus:null";
-
-    /** 活动列表为空负标记（回源确认无进行中活动时写入，短 TTL 自清，跨实例短路回源；值="1"；全局单键） */
-    public static final String KEY_ACTIVITY_LIST_NULL = "seckill:activity:list:null";
-
     // ========== SKU 运行态与限购上限（预热初始化 / 覆盖；校验侧直读） ==========
 
     /** SKU 库存计数（参与实例属性；预热初始化，运行期扣减 / 回补；标识：activityNo, skuNo） */

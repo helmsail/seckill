@@ -1,4 +1,4 @@
-package com.helmsail.seckill.service.seckill;
+package com.helmsail.seckill.service.activity;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.helmsail.seckill.base.mq.MqTopic;

@@ -31,11 +31,12 @@ import java.util.concurrent.TimeUnit;
  * 2. 过滤合并：待开始只留进入预热窗口的（三合一：今天可售 + 临近今天的开场；窗口外不缓存——远期/非可售日不占缓存），加进行中、已暂停合成处理列表；
  * 3. 逐个活动处理（一活动的数据一趟内完成）：
  *    - 覆写活动信息 Hash（覆盖即刷新、新增即补充），使暂停/激活/信息变更（含管理端手动操作）在运行期生效；
- *    - 逐 SKU 写运行态键：库存（仅待开始 setIfAbsent 缺省初始化，绝不覆盖运行期已扣减的实时值）→
+ *    - 逐 SKU 写运行态键：库存（仅待开始且写前重查仍为 PENDING 时覆写——配置期以 DB 为准；
+ *      运行期绝不触碰，防冲掉已扣减的实时值）→
  *      上下架（声明式覆盖，下架同样写 0，激活瞬间名单已就绪）→ 限购上限（静态配置，删除重加可能改值）；
  *    - 全体 SKU 处理完毕后整体化为 JSON 写入快照键——运行态字段已就地剔除，快照只留静态目录（免得旧值混淆）。
  *
- * 库存仅在本任务“待开始”分支被写入，其余任何分支与状态永不触碰库存键——
+ * 库存仅在本任务“待开始且写前重查仍为 PENDING”分支被写入，其余任何分支与状态永不触碰库存键——
  * 运行期实时值只被扣减/回补修改；活动终态结余归还见 StockCleanupJobHandler（GETDEL 取走 → 归还主域）。
  * TTL 政策（三态内每轮续期，关闭后自然回收）：快照/上下架 7 天、限购上限 30 天（淘汰方向为“放宽”，须留停摆余量）；
  * 库存键无 TTL（缺失=全拒且无补充机制，绝不淘汰）；活动 Hash field 无法按 field 过期，由 ActivityInfoCleanupJobHandler 清理。
@@ -108,15 +109,20 @@ public class ActivityCacheJobHandler {
                     continue;
                 }
 
+                // 待开始活动：写库存前重查当前状态——列表是拉取时的快照，处理期间可能已被提前激活；
+                // 仅确认仍为 PENDING（配置期、无扣减）才允许覆写库存键（ACTIVE/PAUSED 运行期永不写）
+                boolean writableStock = pending && isStillPending(activityNo);
+
                 // 覆写活动信息 Hash（覆盖即刷新、新增即补充）
                 redisService.hSet(SeckillRedisKey.KEY_ACTIVITY_INFO, activityNo,
                         objectMapper.writeValueAsString(activity));
 
-                // 逐 SKU：库存（仅待开始）→ 上下架 → 限购上限 → 就地剔除（供快照）
+                // 逐 SKU：库存（仅待开始且仍 PENDING）→ 在售键 → 限购上限 → 就地剔除（供快照）
                 for (SeckillProductSkuDTO row : rows) {
                     String skuNo = row.getSkuNo();
-                    if (pending) {
-                        redisService.setIfAbsent(String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, skuNo),
+                    if (writableStock) {
+                        // 覆写（而非缺省初始化）：配置期以 DB 为准——运营在预热窗口内改库存后，下一轮即同步
+                        redisService.set(String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, skuNo),
                                 String.valueOf(row.getActivityStock()));
                     }
                     redisService.set(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, skuNo),
@@ -125,7 +131,7 @@ public class ActivityCacheJobHandler {
                     redisService.set(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, skuNo),
                             String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()),
                             QUOTA_KEY_TTL_SECONDS, TimeUnit.SECONDS);
-                    // 运行态值已入键，就地剔除——快照只留静态目录（免得旧值混淆）
+                    // 运行态值已入独立键，就地剔除——快照只留目录（免得旧值混淆），运行态读取一律走独立键
                     row.setActivityStock(null);
                     row.setShelfStatus(null);
                 }
@@ -139,6 +145,14 @@ public class ActivityCacheJobHandler {
             }
         }
         return processed;
+    }
+
+    /**
+     * 写库存前重查活动状态：列表是拉取时的快照，处理期间可能已被提前激活（activate 允许提前）；
+     * 仅确认仍为 PENDING（配置期、无扣减）才允许覆写库存键
+     */
+    private boolean isStillPending(String activityNo) {
+        return activityService.getByActivityNo(activityNo).getActivityStatus() == ActivityStatus.PENDING;
     }
 
     /**

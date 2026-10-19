@@ -29,7 +29,8 @@ import java.util.concurrent.TimeUnit;
  *
  * 三层读取：Caffeine（软/硬过期）→ Redis 快照 → Dubbo 回源；
  * 回源结果同口径回填 Redis（无 TTL）——读路径为兜底写入者，预热任务仍是常态刷新者；
- * 回源确认不存在/为空时写短 TTL 负标记（跨实例短路回源，TTL 自清）。
+ * 仅“活动不存在”使用独立负标记（Hash field 无法承载空值，且需跨实例短路）；
+ * 列表/SKU 的空结果直接交给本地空值占位（键固定或窗口外无读者，无需独立 key）。
  * 秒杀准入判定已收归 CheckService，本类只负责查询与缓存。
  */
 @Slf4j
@@ -60,11 +61,13 @@ public class ActivityQueryService {
 
     @PostConstruct
     public void init() {
-        // 过期参数三族统一（60/30）：软 30s = 被访问条目的 Redis 对齐节奏；硬 60s = 全链重建周期
-        // （重建仅多一次 Redis 读，Redis 缺失才回源）——管理端改动 ≤30s 在 C 端可见
-        activityListCache = new CaffeineCache<>(60, 30, 1000, this::loadActivityList, this::refreshActivityList);
-        activityByNoCache = new CaffeineCache<>(60, 30, 1000, this::loadActivityByNo, this::refreshActivityByNo);
-        activitySkusCache = new CaffeineCache<>(60, 30, 1000, this::loadActivitySkus, this::refreshActivitySkus);
+        // 过期参数三族统一（硬 300s / 软 5s）：软 5s = 被访问条目的 Redis 对齐节奏（管理端改动秒级可见）；
+        // 硬 300s = 全链重建兜底（仅多一次 Redis 读，Redis 缺失才回源）
+        // 缓存准入标准：可接受短期不一致的数据即适合入 Caffeine（目录 + 上下架）；
+        // 库存例外——不可接受不一致，查询时实时读独立键，不进缓存
+        activityListCache = new CaffeineCache<>(300, 5, 1000, this::loadActivityList, this::refreshActivityList);
+        activityByNoCache = new CaffeineCache<>(300, 5, 1000, this::loadActivityByNo, this::refreshActivityByNo);
+        activitySkusCache = new CaffeineCache<>(300, 5, 1000, this::loadActivitySkus, this::refreshActivitySkus);
     }
 
     public List<ActivityDTO> listActivities() {
@@ -76,10 +79,11 @@ public class ActivityQueryService {
     }
 
     /**
-     * 商品列表：快照（静态目录）+ 运行态值拼装，返回查询视图
+     * 商品列表：目录与上下架随缓存（可接受 ≤5s 不一致），库存实时拼装，返回查询视图
      *
-     * 实时余量 / 上下架状态从库存键、在售键 MGET 读出后填入返回副本
-     * （不污染缓存对象），前端无需再逐 SKU 单独拉取。
+     * 上下架随 Caffeine 软过期 5s 异步刷新对齐独立键（缺失按 0，与购买门禁同口径）；
+     * 实时余量每请求从库存键 MGET 读出后填入返回副本（不污染缓存对象）——
+     * 库存不可接受不一致，不进缓存。
      */
     public List<ActivityProductVO> getSkuListByActivityNo(String activityNo) {
         List<SeckillProductSkuDTO> rows = activitySkusCache.get(activityNo);
@@ -87,22 +91,16 @@ public class ActivityQueryService {
             return null;
         }
         List<String> stockKeys = new ArrayList<>(rows.size());
-        List<String> shelfKeys = new ArrayList<>(rows.size());
         for (SeckillProductSkuDTO row : rows) {
             stockKeys.add(String.format(SeckillRedisKey.KEY_SKU_STOCK, activityNo, row.getSkuNo()));
-            shelfKeys.add(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, row.getSkuNo()));
         }
         List<String> stocks = stockKeys.isEmpty() ? List.of() : redisService.multiGet(stockKeys);
-        List<String> shelves = shelfKeys.isEmpty() ? List.of() : redisService.multiGet(shelfKeys);
         List<ActivityProductVO> list = new ArrayList<>(rows.size());
         for (int i = 0; i < rows.size(); i++) {
             ActivityProductVO view = new ActivityProductVO();
-            BeanUtils.copyProperties(rows.get(i), view);
+            BeanUtils.copyProperties(rows.get(i), view);   // 含缓存中的上下架（≤5s 对齐）
             String stock = stocks == null ? null : stocks.get(i);
-            String shelf = shelves == null ? null : shelves.get(i);
             view.setRemainingStock(stock == null ? 0 : Integer.parseInt(stock));
-            // 上下架以在售键为准（缺失按 0，与购买门禁同口径）
-            view.setShelfStatus("1".equals(shelf) ? 1 : 0);
             list.add(view);
         }
         return list;
@@ -117,20 +115,16 @@ public class ActivityQueryService {
     // ==================== 加载链与辅助方法 ====================
 
     /**
-     * 加载活动列表（全链）：对齐 Redis，键级缺席 → 负标记短路 → 回源（覆盖回填，field 相互隔离）
+     * 加载活动列表（全链）：对齐 Redis → 回源（覆盖回填，field 相互隔离）
      */
     private List<ActivityDTO> loadActivityList(String key) {
         List<ActivityDTO> hit = refreshActivityList(key);
         if (hit != null) {
             return hit;
         }
-        // 键级缺席：负标记（跨实例共享、短 TTL）命中即短路，不再探测 base
-        if (Boolean.TRUE.equals(redisService.hasKey(SeckillRedisKey.KEY_ACTIVITY_LIST_NULL))) {
-            return null;
-        }
+        // 列表键固定、无随机探测面：空结果直接交给本地空值占位（跨实例仅多一次轻查询）
         List<ActivityDTO> rows = activityService.listByStatus(ActivityStatus.ACTIVE);
         if (rows == null || rows.isEmpty()) {
-            writeNullMarker(SeckillRedisKey.KEY_ACTIVITY_LIST_NULL);
             return null;
         }
         // 覆盖回填（Hash field 相互隔离，不影响其他活动；口径与预热任务一致）
@@ -220,38 +214,60 @@ public class ActivityQueryService {
     }
 
     /**
-     * 加载活动 SKU 快照（全链）：对齐 Redis → 负标记短路（按空列表处理）→ 回源（剔除运行态）并回填
+     * 加载活动 SKU 快照（全链）：对齐 Redis → 回源（剔除运行态）并回填
+     *
+     * 空结果按空列表返回：作为合法值进本地空值缓存（300s），无需独立负标记。
      */
     private List<SeckillProductSkuDTO> loadActivitySkus(String key) {
         List<SeckillProductSkuDTO> hit = refreshActivitySkus(key);
         if (hit != null) {
             return hit;
         }
-        // 负标记（跨实例共享、短 TTL）：命中即短路，不再探测 base（空结果按空列表处理）
-        if (Boolean.TRUE.equals(redisService.hasKey(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, key)))) {
-            return List.of();
-        }
         List<SeckillProductSkuDTO> rows = seckillProductSkuService.listByActivityNo(key);
         if (rows == null || rows.isEmpty()) {
-            writeNullMarker(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_NULL, key));
             return rows;
         }
-        // 与快照同口径：剔除库表带出的库存配额与上下架，DB 运行态值不进缓存
-        // （二者由独立 key 承担，查询时统一从 key 拼装）
+        // 回填口径：快照只留目录——剔除库存配额与上下架（DB/运行态值不入快照，免得旧值混淆）
         for (SeckillProductSkuDTO row : rows) {
             row.setActivityStock(null);
             row.setShelfStatus(null);
         }
         backfillActivitySkus(key, rows);
+        // 本地缓存口径：上下架从独立键对齐（缺失按 0，与购买门禁同口径）；
+        // 独立键单点可改，Caffeine 5s 异步刷新即可跟上，无需重写 JSON 快照
+        fillShelfStatus(key, rows);
         return rows;
     }
 
     /**
-     * 刷新活动 SKU 快照（对齐 Redis 快照键；缺席返回 null，由组件落空值保护）
+     * 刷新活动 SKU 快照：目录取 Redis JSON 快照，上下架从独立键 MGET 对齐；
+     * 快照键缺席返回 null（组件落空值保护）
      */
     private List<SeckillProductSkuDTO> refreshActivitySkus(String key) {
-        return parse(redisService.get(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
+        List<SeckillProductSkuDTO> rows = parse(
+                redisService.get(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, key)),
                 new TypeReference<>() {});
+        if (rows == null) {
+            return null;
+        }
+        fillShelfStatus(key, rows);
+        return rows;
+    }
+
+    /**
+     * 用独立在售键对齐上下架（缺失按 0，与购买门禁同口径）；
+     * 独立键是运行态权威、单点可改——本地缓存 5s 异步刷新即可对齐，无需重写 JSON 快照
+     */
+    private void fillShelfStatus(String activityNo, List<SeckillProductSkuDTO> rows) {
+        List<String> shelfKeys = new ArrayList<>(rows.size());
+        for (SeckillProductSkuDTO row : rows) {
+            shelfKeys.add(String.format(SeckillRedisKey.KEY_SKU_SHELF, activityNo, row.getSkuNo()));
+        }
+        List<String> shelves = shelfKeys.isEmpty() ? List.of() : redisService.multiGet(shelfKeys);
+        for (int i = 0; i < rows.size(); i++) {
+            String shelf = shelves == null ? null : shelves.get(i);
+            rows.get(i).setShelfStatus("1".equals(shelf) ? 1 : 0);
+        }
     }
 
     /**
@@ -263,7 +279,7 @@ public class ActivityQueryService {
         try {
             redisService.set(String.format(SeckillRedisKey.KEY_ACTIVITY_PRODUCT_LIST, activityNo),
                     objectMapper.writeValueAsString(rows));
-            // 静态字段的分离快照同步回填（供门禁点读；口径与预热任务一致）
+            // 低频变更字段（限购）的分离快照同步回填（供门禁点读；口径与预热任务一致）
             for (SeckillProductSkuDTO row : rows) {
                 redisService.set(String.format(SeckillRedisKey.KEY_SKU_QUOTA, activityNo, row.getSkuNo()),
                         String.valueOf(row.getPurchaseLimit() == null ? 0 : row.getPurchaseLimit()));
